@@ -1,0 +1,49 @@
+*.pyc
+*.tmp
+\.idea
+\.pytest_cache
+.vscode
+.mypy_cache
+*.npz
+.cache
+.DS_Store
+pintode.egg-info/*
+*vtk
+quadqs_statistics.json
+
+graphpint.egg-info
+graphpint.egg-info/*
+graphpint/__pycache__/*
+
+# For tensorboard logs
+*v2
+*ubyte.gz
+*json.gz
+*.pb
+
+# For slurm out files
+*.out
+
+# For Isambard
+*.pbs*
+!scripts/isambard.pbs
+
+# Artifacts of testing
+graphpint/tests/data/*
+
+## Pytorch data savings
+*-ubyte
+
+## Don't save equinox models
+*.eqx
+
+## Ignore the example data
+examples/data/
+
+## Cprofile
+examples/runs/cprofile/*
+
+## Data
+examples/pendulums/data/*
+examples/dahlquist/data/*
+examples/lotka-voltera/data/*
