@@ -44,8 +44,8 @@ init_lr = 1e-4
 decay_rate = 0.9
 
 ## Training hps
-print_every = 100
-nb_epochs = 10
+print_every = 1000
+nb_epochs = 10000
 batch_size = 64
 
 
@@ -254,8 +254,8 @@ model_main = eqx.combine(params_main, static_main)
 model_envs = eqx.combine(params_envs, static_envs)
 model = (model_main, model_envs)
 
-eqx.tree_serialise_leaves("data/model_000.eqx", model)
-# model = eqx.tree_deserialise_leaves("data/model_000.eqx", model)
+eqx.tree_serialise_leaves("data/model_01.eqx", model)
+# model = eqx.tree_deserialise_leaves("data/model_01.eqx", model)
 
 # %% [markdown]
 
