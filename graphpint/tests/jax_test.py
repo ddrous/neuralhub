@@ -1,5 +1,3 @@
-# %%
-
 import numpy as np
 import jax
 
@@ -22,16 +20,12 @@ print("Jax devices are:", jax.devices())
 print("Jax version:", jax.__version__)
 
 
-# @jax.jacrev
-@jax.jit
 def f(x):  # function we're benchmarking (works in both NumPy & JAX)
-  return (x.T @ (x - x.mean(axis=0))) * x
+  return x.T @ (x - x.mean(axis=0))
 
 start = time.time()
 x_np = np.ones((100, 100), dtype=np.float32)  # same as JAX default dtype
-
-for i in range(100):
-    x_np = f(x_np)  # measure NumPy runtime
+f(x_np)  # measure NumPy runtime
 
 # x_jax = jax.device_put(x_np)  # measure JAX device transfer time
 # f_jit = jax.jit(f)
@@ -40,16 +34,3 @@ for i in range(100):
 
 end = time.time()
 print("Total time:", end-start)
-
-# %%
-
-import numpy as np
-from jax import jit
-
-def f(x):
-  return 1 + x * 0
-
-print(f(np.nan))  # nan
-print(jit(f)(np.nan))  # 1.0
-
-# %%

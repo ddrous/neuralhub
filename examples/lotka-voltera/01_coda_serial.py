@@ -13,6 +13,8 @@
 
 #%%
 import jax
+
+print("\n############# Generalising Lotka-Volterra with CoDA #############\n")
 print("Available devices:", jax.devices())
 
 from jax import config
@@ -38,19 +40,19 @@ SEED = 27
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 5e-4
+init_lr = 1e-4
 decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 1000
+nb_epochs = 10
 batch_size = 64
 
 
 #%%
 
 data = jnp.load('data/lotka_volterra.npz')
-print(data["t"].shape, data["X"].shape)
+print("Data shapes for (t, X):", data["t"].shape, data["X"].shape, flush=True)
 
 ## Plot one of those Lotka-Volterra systems
 nb_envs = data["X"].shape[0] 
@@ -73,7 +75,8 @@ class Processor(eqx.Module):
     def __init__(self, in_size=2, out_size=2, key=None):
         keys = get_new_key(key, num=3)
         self.layers = [eqx.nn.Linear(in_size+1, 100, key=keys[0]), jax.nn.tanh,
-                        eqx.nn.Linear(100, out_size, key=keys[1]) ]
+                        eqx.nn.Linear(100, 100, key=keys[1]), jax.nn.tanh,
+                        eqx.nn.Linear(100, out_size, key=keys[2]) ]
 
     def __call__(self, x, t):
         y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
@@ -108,7 +111,7 @@ params_envs, static_envs = eqx.partition(models_envs, eqx.is_array)
 
 
 def params_norm(params):
-    return jnp.sum([jnp.sum(jnp.abs(p)) for p in eqx.tree_leaves(params)])
+    return jnp.array([jnp.sum(jnp.abs(x)) for x in jax.tree_util.tree_leaves(params)]).sum()
 
 def l2_norm(X, X_hat):
     total_loss = jnp.mean((X - X_hat)**2, axis=-1)   ## Norm of d-dimensional vectors
@@ -124,8 +127,9 @@ def loss_fn(params, static, batch):
 
     X_hat = integrator_batched(params_, static, X[:, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
 
-    return l2_norm(X, X_hat)
-    # return l2_norm(X, X_hat) + 1e-4*params_norm(params_env)
+    # return l2_norm(X, X_hat)
+    # return 1e0*params_norm(params_env)
+    return l2_norm(X, X_hat) + 1e-0*params_norm(params_env)
 
 @partial(jax.jit, static_argnums=(1))
 def train_step(params, static, batch, opt_state):
@@ -178,14 +182,14 @@ for e in range(nb_envs):
         losses.append(loss_epoch)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-            print(f"    Epoch: {epoch:-5d}      Loss: {loss_epoch:.8f}")
+            print(f"    Epoch: {epoch:-5d}      Loss: {loss_epoch:.8f}", flush=True)
 
     ## Update the main network
     params_main = params[0]
     params_envs[e] = params[1]
 
     ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}');
-    # plt.savefig(f"data/loss_{e}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"data/loss_{e}.png", dpi=300, bbox_inches='tight')
 
 wall_time = time.time() - start_time
 time_in_hmsecs = seconds_to_hours(wall_time)
@@ -240,7 +244,8 @@ ax = sbplot(X_hat[:,0], X_hat[:,1], x_label='Preys', y_label='Predators', label=
 ax = sbplot(X_hat_main[:,0], X_hat_main[:,1], "b-", lw=1, label=f'Pred (Main)', ax=ax)
 ax = sbplot(X[:,0], X[:,1], "--", lw=1, label=f'True', ax=ax)
 
-# plt.savefig("data/simple_pendulum.png", dpi=300, bbox_inches='tight')
+# plt.savefig(f"data/coda_test_env{e}_traj{i}.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"data/coda_test.png", dpi=300, bbox_inches='tight')
 
 
 #%% 
