@@ -11,6 +11,7 @@
 # - Must we learn the environments sequentially ?
 # - Can we train all these models in parallel, and only use the avarage accros environments to update the main network?
 
+
 #%%
 import jax
 
@@ -44,8 +45,8 @@ init_lr = 1e-4
 decay_rate = 0.9
 
 ## Training hps
-print_every = 1000
-nb_epochs = 10000
+print_every = 100
+nb_epochs = 10
 batch_size = 64
 
 
@@ -127,9 +128,9 @@ def loss_fn(params, static, batch):
 
     X_hat = integrator_batched(params_, static, X[:, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
 
-    # return l2_norm(X, X_hat)
+    return l2_norm(X, X_hat)
     # return 1e0*params_norm(params_env)
-    return l2_norm(X, X_hat) + 1e-0*params_norm(params_env)
+    # return l2_norm(X, X_hat) + 1e-0*params_norm(params_env)
 
 @partial(jax.jit, static_argnums=(1))
 def train_step(params, static, batch, opt_state):
@@ -155,7 +156,7 @@ sched = optax.piecewise_constant_schedule(init_value=init_lr,
                                                                     int(total_steps*0.75):0.5})
 start_time = time.time()
 
-for e in range(nb_envs):
+for e in list(range(nb_envs))*2:        ## TODO just once !!
 
     print(f"\n\n=== Training environment {e} ... ===")
 

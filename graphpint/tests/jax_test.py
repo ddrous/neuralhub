@@ -4,14 +4,14 @@ import jax
 ## Use jax cpu
 # jax.config.update("jax_platform_name", "cpu")
 
-import jax.numpy as jnp
-import time
 
-# import os
+import os
 # os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=8'
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import jax.numpy as jnp
 import time
+
 
 # import os
 # os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=32'    ## Trick to virtualise CPU for pmap
@@ -20,6 +20,7 @@ print("Jax devices are:", jax.devices())
 print("Jax version:", jax.__version__)
 
 
+@jax.jit
 def f(x):  # function we're benchmarking (works in both NumPy & JAX)
   return x.T @ (x - x.mean(axis=0))
 
