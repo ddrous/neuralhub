@@ -25,7 +25,7 @@ environments = [
     {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 1.0}
 ]
 
-n_traj_per_env = 128*1
+n_traj_per_env = 128*10
 n_steps_per_traj = 501
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
@@ -74,6 +74,6 @@ ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=5, repeat=Fal
 plt.show()
 
 # Save t_eval and the solution to a npz file
-np.savez('data/lotka_volterra.npz', t=solution.t, X=data)
+np.savez('data/lotka_volterra_big.npz', t=solution.t, X=data)
 
 

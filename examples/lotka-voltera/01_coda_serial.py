@@ -38,7 +38,8 @@ import time
 SEED = 27
 
 ## Integrator hps
-integrator = rk4_integrator
+# integrator = rk4_integrator
+integrator = dopri_integrator_diff
 
 ## Optimiser hps
 init_lr = 1e-4
@@ -46,7 +47,7 @@ decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 10
+nb_epochs = 1000
 batch_size = 64
 
 
@@ -56,8 +57,8 @@ data = jnp.load('data/lotka_volterra.npz')
 print("Data shapes for (t, X):", data["t"].shape, data["X"].shape, flush=True)
 
 ## Plot one of those Lotka-Volterra systems
-nb_envs = data["X"].shape[0] 
-# nb_envs = 1        ## Remove this line
+# nb_envs = data["X"].shape[0] 
+nb_envs = 1        ## Remove this line
 nb_trajs_per_env = data["X"].shape[1]
 nb_steps_per_traj = data["X"].shape[2]
 d = data["X"].shape[3]
@@ -154,9 +155,11 @@ sched = optax.piecewise_constant_schedule(init_value=init_lr,
                                             boundaries_and_scales={int(total_steps*0.25):0.5, 
                                                                     int(total_steps*0.5):0.2,
                                                                     int(total_steps*0.75):0.5})
+fig, ax = plt.subplots(1, 1, figsize=(6, 3.5))
+
 start_time = time.time()
 
-for e in list(range(nb_envs))*2:        ## TODO just once !!
+for e in list(range(nb_envs))*1:        ## TODO just once !!
 
     print(f"\n\n=== Training environment {e} ... ===")
 
@@ -189,8 +192,14 @@ for e in list(range(nb_envs))*2:        ## TODO just once !!
     params_main = params[0]
     params_envs[e] = params[1]
 
-    ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}');
+    # ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}', ax=ax);
+    ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", label=f'{e}', title='Losses for each environment', ax=ax);
     plt.savefig(f"data/loss_{e}.png", dpi=300, bbox_inches='tight')
+    # plt.show()
+    plt.legend()
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+    # ax.clear()
 
 wall_time = time.time() - start_time
 time_in_hmsecs = seconds_to_hours(wall_time)
