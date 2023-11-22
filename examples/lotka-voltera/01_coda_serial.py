@@ -38,22 +38,23 @@ import time
 SEED = 27
 
 ## Integrator hps
-# integrator = rk4_integrator
-integrator = dopri_integrator_diff
+integrator = rk4_integrator
+# integrator = dopri_integrator
 
 ## Optimiser hps
-init_lr = 1e-4
+init_lr = 1e-3
 decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 1000
-batch_size = 64
+nb_epochs = 5000
+# batch_size = 128*10
+batch_size = 1
 
 
 #%%
 
-data = jnp.load('data/lotka_volterra.npz')
+data = jnp.load('data/lotka_volterra_small.npz')
 print("Data shapes for (t, X):", data["t"].shape, data["X"].shape, flush=True)
 
 ## Plot one of those Lotka-Volterra systems
@@ -67,7 +68,8 @@ e = np.random.randint(0, nb_envs)
 i = np.random.randint(0, nb_trajs_per_env)
 
 data_e = data["X"][e, i, :, :]
-ax = sbplot(data_e[:, 0], data_e[:, 1], "-", x_label='Preys', label=f'$e={e},i={i}$', xlim=(0,2), ylim=(0,3), title='Lotka-Volterra')
+# ax = sbplot(data_e[:, 0], data_e[:, 1], "-", x_label='Preys', label=f'$e={e},i={i}$', xlim=(0,2), ylim=(0,3), title='Lotka-Volterra')
+ax = sbplot(data_e[:, 0], data_e[:, 1], "-", x_label='Preys', label=f'$e={e},i={i}$', title='Lotka-Volterra')
 
 # %%
 
@@ -76,12 +78,14 @@ class Processor(eqx.Module):
 
     def __init__(self, in_size=2, out_size=2, key=None):
         keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(in_size+1, 100, key=keys[0]), jax.nn.tanh,
-                        eqx.nn.Linear(100, 100, key=keys[1]), jax.nn.tanh,
-                        eqx.nn.Linear(100, out_size, key=keys[2]) ]
+        self.layers = [eqx.nn.Linear(in_size, 50, key=keys[0]), jax.nn.tanh,
+        # self.layers = [eqx.nn.Linear(in_size+1, 50, key=keys[0]), jax.nn.tanh,
+                        # eqx.nn.Linear(100, 100, key=keys[1]), jax.nn.tanh,
+                        eqx.nn.Linear(50, out_size, key=keys[2]) ]
 
     def __call__(self, x, t):
-        y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        y = x
         for layer in self.layers:
             y = layer(y)
         return y

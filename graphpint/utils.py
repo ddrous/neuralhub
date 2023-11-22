@@ -1,7 +1,8 @@
 ## Just a bunch of utility functions
 import time
 import jax
-
+import jax.numpy as jnp
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set(context='notebook', style='ticks',
@@ -52,6 +53,9 @@ def sbplot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=No
     plt.tight_layout()
     return ax
 
+## Alias for sbplot
+def plot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=None, x_scale='linear', y_scale='linear', xlim=None, ylim=None, **kwargs):
+  return sbplot(*args, ax=ax, figsize=figsize, x_label=x_label, y_label=y_scale, title=title, x_scale=x_scale, y_scale=y_scale, xlim=xlim, ylim=ylim, **kwargs)
 
 
 def pvplot(x, y, show=True, xlabel=None, ylabel=None, title=None, ax=None, **kwargs):
@@ -76,3 +80,22 @@ def pvplot(x, y, show=True, xlabel=None, ylabel=None, title=None, ax=None, **kwa
         ax.show()
 
     return ax
+
+
+def flatten_pytree(pytree):
+    """ Flatten the leaves of a pytree into a single array. Return the array, the shapes of the leaves and the tree_def. """
+
+    leaves, tree_def = jax.tree_util.tree_flatten(pytree)
+    flat = jnp.concatenate([x.flatten() for x in leaves])
+    shapes = [x.shape for x in leaves]
+    return flat, shapes, tree_def
+
+def unflatten_pytree(flat, shapes, tree_def):
+    """ Reconstructs a pytree given its leaves flattened, their shapes, and the treedef. """
+
+    leaves_prod = [0]+[np.prod(x) for x in shapes]
+
+    lpcum = np.cumsum(leaves_prod)
+    leaves = [flat[lpcum[i-1]:lpcum[i]].reshape(shapes[i-1]) for i in range(1, len(lpcum))]
+
+    return jax.tree_util.tree_unflatten(tree_def, leaves)
