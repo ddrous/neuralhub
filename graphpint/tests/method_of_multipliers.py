@@ -25,6 +25,8 @@ jax.numpy.set_printoptions(precision=6)
 
 # %%
 
+#### Simple method of multipliers
+
 @jax.jit
 def f(x):   ## The function to minimize
     x1, x2 = x
@@ -130,6 +132,8 @@ def plot_optimisation_path(path, title='Method of Multipliers'):
 # plot_optimisation_path(path)
 
 # %%
+
+#### Simple method of multipliers
 
 @jax.jit
 def L(x, lamb, rho):
