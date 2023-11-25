@@ -12,7 +12,7 @@ print("\n############# Lotka-Volterra with Neural ODE #############\n")
 print("Available devices:", jax.devices())
 
 from jax import config
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -45,12 +45,12 @@ integrator = rk4_integrator
 # integrator = dopri_integrator
 
 ## Optimiser hps
-init_lr = 1e-5
+init_lr = 1e-4
 decay_rate = 0.1
 
 ## Training hps
 print_every = 100
-nb_epochs = 100
+nb_epochs = 1000
 # batch_size = 128*10
 batch_size = 1
 
@@ -58,10 +58,14 @@ batch_size = 1
 #%%
 
 def lotka_volterra(t, state, alpha, beta, delta, gamma):
-    x, y = state
-    dx_dt = alpha * x - beta * x * y
-    dy_dt = delta * x * y - gamma * y
-    return [dx_dt, dy_dt]
+    # x, y = state
+    # dx_dt = alpha * x - beta * x * y
+    # dy_dt = delta * x * y - gamma * y
+    # return [dx_dt, dy_dt]
+
+    ## A simpler system
+    dx = state / (1 + state)
+    return np.stack([dx[1], -dx[0]], axis=-1)
 
 p = {"alpha": 1.5, "beta": 1.0, "delta": 3.0, "gamma": 1.0}
 t_eval = np.linspace(0, 10, 1001)
@@ -78,12 +82,19 @@ class Physics(eqx.Module):
     params: jnp.ndarray
 
     def __init__(self, in_size=2, out_size=2, key=None):
-        self.params = jnp.abs(jax.random.normal(key, (4,)))
+        # self.params = jnp.abs(jax.random.normal(key, (4,)))
+        self.params = jax.random.normal(key, (4,))
 
     def __call__(self, x, t):
-        dx0 = x[0]*self.params[0] - x[0]*x[1]*self.params[1]
-        dx1 = x[0]*x[1]*self.params[2] - x[1]*self.params[3]
-        return jnp.array([dx0, dx1])
+        # dx0 = x[0]*self.params[0] - x[0]*x[1]*self.params[1]
+        # dx1 = x[0]*x[1]*self.params[2] - x[1]*self.params[3]
+        # return jnp.array([dx0, dx1])
+
+        ## A simpler system
+        a, b, c, d = self.params
+        dx = a*x / (b + c*x)
+        return jnp.stack([dx[1], d*dx[0]], axis=-1)
+
 
 class Augmentation(eqx.Module):
     layers: list
@@ -152,86 +163,92 @@ def l2_norm(X, X_hat):
 
 # %%
 
-# ### ==== Vanilla Gradient Descent optimisation ==== ####
+### ==== Vanilla Gradient Descent optimisation ==== ####
 
-# def loss_fn(params, static, batch):
-#     print('\nCompiling function "loss_fn" ...\n')
-#     X, t = batch
+def loss_fn(params, static, batch):
+    print('\nCompiling function "loss_fn" ...\n')
+    X, t = batch
 
-#     X_hat = integrator(params, static, X[0, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
+    X_hat = integrator(params, static, X[0, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
 
-#     term1 = l2_norm(X, X_hat)
-#     term2 = p_norm(params.augmentation)
+    term1 = l2_norm(X, X_hat)
+    term2 = p_norm(params.augmentation)
 
-#     # return term1, (term1, term2)
-#     return term1 + 1e-0*term2, (term1, term2)
-
-
-# @partial(jax.jit, static_argnums=(1))
-# def train_step(params, static, batch, opt_state):
-#     print('\nCompiling function "train_step" ...\n')
-
-#     (loss, (term1, term2)), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
-
-#     updates, opt_state = opt.update(grads, opt_state)
-#     params = optax.apply_updates(params, updates)
-
-#     return params, opt_state, loss, term1, term2
+    # return term1, (term1, term2)
+    return term1 + 1e-0*term2, (term1, term2)
 
 
-# total_steps = nb_epochs
+@partial(jax.jit, static_argnums=(1))
+def train_step(params, static, batch, opt_state):
+    print('\nCompiling function "train_step" ...\n')
 
-# # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
-# # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
-# sched = optax.piecewise_constant_schedule(init_value=init_lr,
-#                 boundaries_and_scales={int(total_steps*0.25):0.5, 
-#                                         int(total_steps*0.5):0.1,
-#                                         int(total_steps*0.75):0.2})
-# fig, ax = plt.subplots(1, 1, figsize=(6, 3.5))
+    (loss, (term1, term2)), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
 
-# start_time = time.time()
+    updates, opt_state = opt.update(grads, opt_state)
+    params = optax.apply_updates(params, updates)
+
+    return params, opt_state, loss, term1, term2
 
 
-# print(f"\n\n=== Beginning Training ... ===")
+total_steps = nb_epochs
 
-# opt = optax.adam(sched)
-# opt_state = opt.init(params)
+# sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+# sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
+sched = optax.piecewise_constant_schedule(init_value=init_lr,
+                boundaries_and_scales={int(total_steps*0.25):0.5, 
+                                        int(total_steps*0.5):0.1,
+                                        int(total_steps*0.75):0.2})
+fig, ax = plt.subplots(1, 1, figsize=(6, 3.5))
 
-# losses = []
-# for epoch in range(nb_epochs):
+start_time = time.time()
 
-#     nb_batches = 0
-#     loss_sum = jnp.zeros(3)
-#     for i in range(0, 1, batch_size):
-#         batch = (data[0,i:i+batch_size,...], t_eval)
+
+print(f"\n\n=== Beginning Training ... ===")
+
+opt = optax.adam(sched)
+opt_state = opt.init(params)
+
+losses = []
+for epoch in range(nb_epochs):
+
+    nb_batches = 0
+    loss_sum = jnp.zeros(3)
+    for i in range(0, 1, batch_size):
+        batch = (data[0,i:i+batch_size,...], t_eval)
     
-#         params, opt_state, loss, term1, term2 = train_step(params, static, batch, opt_state)
+        params, opt_state, loss, term1, term2 = train_step(params, static, batch, opt_state)
 
-#         loss_sum += jnp.array([loss, term1, term2])
-#         nb_batches += 1
+        loss_sum += jnp.array([loss, term1, term2])
+        nb_batches += 1
 
-#     loss_epoch = loss_sum/nb_batches
-#     losses.append(loss_epoch)
+    loss_epoch = loss_sum/nb_batches
+    losses.append(loss_epoch)
 
-#     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-#         print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.5f}      TrajLoss: {loss_epoch[1]:-.5f}      ParamsLoss: {loss_epoch[2]:-.5f}", flush=True)
+    if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
+        print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.5f}      TrajLoss: {loss_epoch[1]:-.5f}      ParamsLoss: {loss_epoch[2]:-.5f}", flush=True)
 
-# losses = jnp.vstack(losses)
-# # ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}', ax=ax);
-# ax = sbplot(losses, label=["Total", "Traj", "Params_a"], x_label='Epoch', y_label='L2', y_scale="log", title='Losses', ax=ax);
-# plt.savefig(f"data/loss_simple.png", dpi=300, bbox_inches='tight')
-# # plt.show()
-# plt.legend()
-# fig.canvas.draw()
-# fig.canvas.flush_events()
+losses = jnp.vstack(losses)
+# ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}', ax=ax);
+ax = sbplot(losses, label=["Total", "Traj", "Params_a"], x_label='Epoch', y_label='L2', y_scale="log", title='Losses', ax=ax);
+plt.savefig(f"data/loss_simple.png", dpi=300, bbox_inches='tight')
+# plt.show()
+plt.legend()
+fig.canvas.draw()
+fig.canvas.flush_events()
 
-# wall_time = time.time() - start_time
-# time_in_hmsecs = seconds_to_hours(wall_time)
-# print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+wall_time = time.time() - start_time
+time_in_hmsecs = seconds_to_hours(wall_time)
+print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
-# params_backup = params
+params_backup = params
 
 # %%
+
+
+
+# ### TODO see the two lines below
+# model = Processor(in_size=2, out_size=2, key=model_keys[0])
+# params_backup, static = eqx.partition(model, eqx.is_array)
 
 # params_flat, params_shapes, tree_def = flatten_pytree(params_backup)
 
@@ -264,7 +281,7 @@ def l2_norm(X, X_hat):
 #         x_new = x - lr*jnp.linalg.solve(hessian, gradient)
 #         # x_new = x - lr * jnp.linalg.inv(hessian)@gradient
 
-#         jax.debug.print("x_new {}", x)
+#         # jax.debug.print("x_new {}", x)
 
 #         errors = errors.at[nit+1].set(jnp.linalg.norm(x_new - x))
 #         return x, x_new, lr*lr_decr, errors, nit+1
@@ -305,103 +322,111 @@ def l2_norm(X, X_hat):
 
 # %%
 
-## For the first time, let's see how the method of multiplier performs !
+# ## For the first time, let's see how the method of multiplier performs !
 
-tau1 = 1e-3 ## Actual learning rate for both methods
-tau2 = 1e-3 ## Multiplicative factor for the penalty term in the simple method, used as tau in the augmented method
+# eq_skip = 100
 
-@jax.jit
-def l2_norm_single(X):
-    total_loss = jnp.mean(X**2, axis=-1)
-    return jnp.sum(total_loss) / (X.shape[-2])
+# @jax.jit
+# def l2_norm_single(X):
+#     total_loss = jnp.mean(X**2, axis=-1)
+#     return jnp.sum(total_loss) / (X.shape[-2])
 
-@jax.jit
-def f(params):
-    return p_norm(params.augmentation)
+# @jax.jit
+# def f(params):
+#     return p_norm(params.augmentation)
 
-@partial(jax.jit, static_argnums=(1))
-def h(params, static, batch):
-    X, t = batch
+# @partial(jax.jit, static_argnums=(1))
+# def h(params, static, batch):
+#     X, t = batch
 
-    X_hat = integrator(params, static, X[0, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "bounded")
-    ret = X - X_hat
+#     X_hat = integrator(params, static, X[0, 0, :], t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
+#     ret = X - X_hat
 
-    return ret.squeeze()
+#     # jax.debug.print("X_hat {}", X_hat[:, :])
 
-@partial(jax.jit, static_argnums=(1))
-def L(params, static, batch, lamb, rho):
-    return f(params) + 0.5*rho*jnp.sum((h(params, static, batch) + lamb/rho)**2)
+#     return ret.squeeze()[::eq_skip, :]        ### TODO Take values every 100 to reduce the number of equality constraints
 
-@partial(jax.jit, static_argnums=(1))
-def inner_train_step(params, static, batch, lamb, rho, tau1, tau2):
-    loss, grads  = jax.value_and_grad(L)(params, static, batch, lamb, rho)
-    params = jax.tree_util.tree_map(lambda x, y: x - tau1*y, params, grads)
+# @partial(jax.jit, static_argnums=(1))
+# def L(params, static, batch, lamb, rho):
+#     return f(params) + 0.5*rho*jnp.sum((h(params, static, batch) + lamb/rho)**2)
 
-    return params, loss
+# @partial(jax.jit, static_argnums=(1))
+# def inner_train_step(params, static, batch, lamb, rho, tau1, tau2):
+#     loss, grads  = jax.value_and_grad(L)(params, static, batch, lamb, rho)
+#     params = jax.tree_util.tree_map(lambda x, y: x - tau1*y, params, grads)
 
-nb_constraints = t_eval.shape[0]
-ones_vec = jnp.ones((nb_constraints, 2))
+#     return params, loss
 
-lamb_min, lamb_max = -10*ones_vec, 10*ones_vec
-gamma = 0.95
+# nb_constraints = t_eval[::eq_skip].shape[0]
+# ones_vec = jnp.ones((nb_constraints, 2))
 
-lamb = 5.*ones_vec
-rho = 1.
+# lamb_min, lamb_max = -10*ones_vec, 10*ones_vec
+# gamma = 0.95
 
-nb_iter_out = 20
-nb_iter_in = 5
-tol = 1e-10
+# tau1 = 1e-5 ## Actual learning rate for this method
+# tau2 = 1e-3 ## Multiplicative factor used as tau in the augmented method
 
-### TODO see the two lines below
-model = Processor(in_size=2, out_size=2, key=model_keys[0])
-params_backup, static = eqx.partition(model, eqx.is_array)
+# lamb = 5.*ones_vec
+# rho = 1.
 
-params = params_backup
-batch = (data[0,:,...], t_eval)
+# nb_iter_out = 25
+# nb_iter_in = 50
+# tol = 1e-10
 
-metrics = []
-iter_count = 0
+# ### TODO see the two lines below
+# model = Processor(in_size=2, out_size=2, key=model_keys[0])
+# params_backup, static = eqx.partition(model, eqx.is_array)
 
-start_time = time.time()
+# params = params_backup
+# batch = (data[0,:,...], t_eval)
 
-for k in range(nb_iter_out):
+# metrics = []
+# iter_count = 0
 
-    params_old = params
+# start_time = time.time()
 
-    for i in range(nb_iter_in):
-        params_new, loss = inner_train_step(params, static, batch, lamb, rho, tau1, tau2)
+# for k in range(nb_iter_out):
+
+#     params_old = params
+
+#     for i in range(nb_iter_in):
+#         params_new, loss = inner_train_step(params, static, batch, lamb, rho, tau1, tau2)
         
-        params_diff = jax.tree_util.tree_map(lambda x, y: x - y, params_new, params_old)
-        if f(params_diff) < tol:
-            break
+#         params_diff = jax.tree_util.tree_map(lambda x, y: x - y, params_new, params_old)
+#         if f(params_diff) < tol:
+#             break
 
-        iter_count += 1
-        params = params_new
-        metrics.append([l2_norm_single(h(params, static, batch)), f(params)])
+#         iter_count += 1
+#         params = params_new
+#         # print("Values:", params.augmentation.layers[0].weight, params.augmentation.layers[0].bias)
+#         # test_val = h(params, static, batch)
+#         # print(test_val)
+#         metrics.append([l2_norm_single(h(params, static, batch)), f(params)])
 
-    lamb = jnp.clip(lamb + rho*h(params_new, static, batch), lamb_min, lamb_max)
+#     lamb = jnp.clip(lamb + rho*h(params_new, static, batch), lamb_min, lamb_max)
 
-    norm_h_old = jnp.linalg.norm(h(params_old, static, batch))
-    norm_h = jnp.linalg.norm(h(params_new, static, batch))
+#     norm_h_old = jnp.linalg.norm(h(params_old, static, batch))
+#     norm_h = jnp.linalg.norm(h(params_new, static, batch))
 
-    if k==0 or norm_h_old < tau2*norm_h:
-        rho = 2*rho
-    else:
-        rho = gamma*rho
+#     if k==0 or norm_h_old < tau2*norm_h:
+#         rho = 2*rho
+#     else:
+#         rho = gamma*rho
 
-    params_diff = jax.tree_util.tree_map(lambda x, y: x - y, params_new, params_old)
-    if f(params_diff) < tol:
-        break
+#     params_diff = jax.tree_util.tree_map(lambda x, y: x - y, params_new, params_old)
+#     if f(params_diff) < tol:
+#         break
 
-    print(f"Iter: {k:-3d}   ParamsLoss={metrics[-1][1]:.6f}   TrajLoss={metrics[-1][0]:.6f}   rho={rho:.6f}    max lambda={lamb.max():.6f}")
+#     print(f"Iter: {k:-3d}   ParamsLoss={metrics[-1][1]:.6f}   TrajLoss={metrics[-1][0]:.6f}   rho={rho:.6f}    max lambda={lamb.max():.6f}")
 
-print(f"\nTotal number of iterations to achieve a tol of {tol} is: {iter_count}")
+# print(f"\nTotal number of iterations to achieve a tol of {tol} is: {iter_count}")
 
 
-wall_time = time.time() - start_time
-time_in_hmsecs = seconds_to_hours(wall_time)
-print("\nTotal Multipliers training time: %d hours %d mins %d secs" %time_in_hmsecs)
+# wall_time = time.time() - start_time
+# time_in_hmsecs = seconds_to_hours(wall_time)
+# print("\nTotal Multipliers training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
+# ax = sbplot(metrics, label=["Traj", "Params"], x_label='Epoch', y_label='L2', y_scale="log", title='Losses Aug. Method Multipliers');
 
 
 # %%
@@ -421,7 +446,7 @@ t = t_eval
 
 X_hat = test_model(params, static, (X[0,:], t))
 
-print("X_hat values", X_hat)
+# print("X_hat values", X_hat)
 
 ax = sbplot(X_hat[:,0], X_hat[:,1], x_label='Preys', y_label='Predators', label=f'Pred', title=f'Phase space, traj {i}')
 ax = sbplot(X[:,0], X[:,1], "--", lw=1, label=f'True', ax=ax)
