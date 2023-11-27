@@ -4,6 +4,7 @@
 # But withoug using Diffrax
 
 #%%
+from functools import partial
 import time
 
 import diffrax
@@ -15,8 +16,14 @@ import jax.random as jrandom
 import matplotlib.pyplot as plt
 import optax  # https://github.com/deepmind/optax
 
-# from graphpint.integrators import *
+from equinox.internal import error_if
 
+# from graphpint.integrators import *
+## Set the environment variable EQX_ON_ERROR=breakpoint
+# import os
+# os.environ["EQX_ON_ERROR"] = "breakpoint"
+
+# jax.devices("cpu")
 
 #%%
 class Func(eqx.Module):
@@ -36,19 +43,23 @@ class Func(eqx.Module):
 
         self.params = jnp.abs(jax.random.normal(key, (4,)))
 
-
     def __call__(self, t, y, args):
     # def __call__(self, y, t):
         # jax.debug.print("Calling the vector field at: {}", t)
+        # y = error_if(y, jnp.isfinite(y), "kaboom1")
 
         dx0 = y[0]*self.params[0] - y[0]*y[1]*self.params[1]
         dx1 = y[0]*y[1]*self.params[2] - y[1]*self.params[3]
         physics = jnp.array([dx0, dx1])
 
-        # return self.mlp(y)
+        # ret = self.mlp(y)
         # return physics
-        return physics + self.mlp(y)        ## Physics + Neural network
+        ret = physics + self.mlp(y)        ## Physics + Neural network
 
+        # jax.debug.print("Called at: {}, Result {}", t, ret)
+
+        # ret = error_if(ret, jnp.isfinite(ret), "kaboom2")
+        return ret
 
 
 #%%
@@ -75,21 +86,25 @@ class NeuralODE(eqx.Module):
         self.func = Func(data_size, width_size, depth, key=key)
 
     def __call__(self, ts, y0):
-        ys_hat = rk4_integrator(self.func, y0, ts, None, None, None, None, None, None)
-        return ys_hat
+        # ys_hat = rk4_integrator(self.func, y0, ts, None, None, None, None, None, None)
+        # return ys_hat
     
-        # solution = diffrax.diffeqsolve(
-        #     diffrax.ODETerm(self.func),
-        #     diffrax.Tsit5(),
-        #     t0=ts[0],
-        #     t1=ts[-1],
-        #     dt0=ts[1] - ts[0],
-        #     y0=y0,
-        #     stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-        #     saveat=diffrax.SaveAt(ts=ts),
-        #     max_steps=4096*10,
-        # )
-        # return solution.ys
+        solution = diffrax.diffeqsolve(
+            diffrax.ODETerm(self.func),
+            diffrax.Tsit5(),
+            t0=ts[0],
+            t1=ts[-1],
+            dt0=ts[1] - ts[0],
+            y0=y0,
+            stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+            saveat=diffrax.SaveAt(ts=ts),
+            max_steps=4096*1,    ## 4096//200 for debugging
+        )
+
+        # jax.debug.print("Solution: {}", solution.stats)
+        nfes = solution.stats["num_steps"]      ## Actually, the number of steps of taken
+
+        return solution.ys, nfes
 
 
 
@@ -171,6 +186,10 @@ def main(
     ts, ys = get_data(dataset_size, key=data_key)
     _, length_size, data_size = ys.shape
 
+    ## Save ts and ys in npz file
+    # jnp.savez("data/lotka_voltera_diffrax.npz", ts=ts, ys=ys)
+    # exit()
+
     model = NeuralODE(data_size, width_size, depth, key=model_key)
 
     # Training loop like normal.
@@ -185,23 +204,33 @@ def main(
         """ norm of the parameters`"""
         return jnp.array([jnp.linalg.norm(x) for x in jax.tree_util.tree_leaves(params)]).sum()
 
-    @eqx.filter_value_and_grad
+    @partial(eqx.filter_value_and_grad, has_aux=True)
     def grad_loss(model, ti, yi):
-        y_pred = jax.vmap(model, in_axes=(None, 0))(ti, yi[:, 0])
+        y_pred, nfes = jax.vmap(model, in_axes=(None, 0))(ti, yi[:, 0])
         # return jnp.mean((yi - y_pred) ** 2)
 
         ## TODO APHYNITY-style loss: https://arxiv.org/abs/2010.04456
-        return jnp.mean((yi - y_pred) ** 2) + 1e-3*params_norm(model.func.mlp.layers)
+        return jnp.mean((yi - y_pred) ** 2) + 1e-3*params_norm(model.func.mlp.layers), (jnp.sum(nfes))
 
     @eqx.filter_jit
     def make_step(ti, yi, model, opt_state):
-        loss, grads = grad_loss(model, ti, yi)
+        (loss, nfes), grads = grad_loss(model, ti, yi)
         updates, opt_state = optim.update(grads, opt_state)
         model = eqx.apply_updates(model, updates)
-        return loss, model, opt_state
 
+        ## Make sure the model.func.params are all positive. Clip them if not.
+        # new_params = jnp.where(model.func.params < 0, 0.0, model.func.params)
+        # new_params = jnp.zeros_like(model.func.params)
+        # model = eqx.tree_at(lambda m: m.func.params, model, new_params)
+
+        return loss, model, opt_state, nfes
+
+    # def stiffness_ratio(model, ti, yi):
+    #     model_grad = jax.jacrev(model)(ti, yi[:, 0], argnums=1)
+    #     jacobians = jax.vmap(jax.jacobian(model.func, argnums=1))(ti, yi[:, 0])
 
     losses = []
+    nfes = []
     for lr, steps, length in zip(lr_strategy, steps_strategy, length_strategy):
         optim = optax.adabelief(lr)
         opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
@@ -211,16 +240,17 @@ def main(
             range(steps), dataloader((_ys,), batch_size, key=loader_key)
         ):
             start = time.time()
-            loss, model, opt_state = make_step(_ts, yi, model, opt_state)
+            loss, model, opt_state, nfe_step = make_step(_ts, yi, model, opt_state)
             end = time.time()
             losses.append(loss)
+            nfes.append(nfe_step)
             if (step % print_every) == 0 or step == steps - 1:
-                print(f"Step: {step:-5d},    Loss: {loss:-.8f},    CPTime: {end - start:-.4f}")
+                print(f"Step: {step:-5d},    Loss: {loss:-.8f},    NFEs: {nfe_step:-5d},    CPTime: {end - start:-.4f}")
 
     if plot:
         # fig, ax = plt.subplots(2, 2, figsize=(6*2, 3.5*2))
-        fig, ax = plt.subplot_mosaic('AB;CC', figsize=(6*2, 3.5*2))
-        model_y = model(ts, ys[0, 0])   ## TODO predicting on the entire trajectory ==forecasting !
+        fig, ax = plt.subplot_mosaic('AB;CC;DD', figsize=(6*2, 3.5*3))
+        model_y, _ = model(ts, ys[0, 0])   ## TODO predicting on the entire trajectory ==forecasting !
 
         ax['A'].plot(ts, ys[0, :, 0], c="dodgerblue", label="Preys (GT)")
         ax['A'].plot(ts, model_y[:, 0], ".", c="navy", label="Preys (NODE)")
@@ -229,19 +259,26 @@ def main(
         ax['A'].plot(ts, model_y[:, 1], ".", c="purple", label="Predators (NODE)")
         
         ax['A'].set_xlabel("Time")
-        ax['A'].legend()
         ax['A'].set_title("Trajectories")
+        ax['A'].legend()
 
         ax['B'].plot(ys[0, :, 0], ys[0, :, 1], c="turquoise", label="GT")
         ax['B'].plot(model_y[:, 0], model_y[:, 1], ".", c="teal", label="Neural ODE")
         ax['B'].set_xlabel("Preys")
-        ax['B'].set_xlabel("Predators")
-        ax['B'].legend()
+        ax['B'].set_ylabel("Predators")
         ax['B'].set_title("Phase space")
+        ax['B'].legend()
 
         ax['C'].plot(losses, c="grey", label="Losses")
+        ax['C'].set_xlabel("Epochs")
         ax['C'].set_title("Loss")
         ax['C'].set_yscale('log')
+        ax['C'].legend()
+
+        ax['D'].plot(nfes, c="brown", label="num_steps_taken")
+        ax['D'].set_xlabel("Epochs")
+        ax['D'].set_title("(Factor of) Number of Function Evaluations")
+        ax['D'].legend()
 
         plt.tight_layout()
         plt.savefig("data/neural_ode_diffrax.png")
@@ -250,6 +287,7 @@ def main(
     return ts, ys, model
 
 
+# with jax.profiler.trace("/data/jax-trace", create_perfetto_link=False):
 ts, ys, model = main()
 
 
@@ -261,8 +299,8 @@ ts, ys, model = main()
 # - This can also be explained by the fact the the stiffness increases as we train the Neural ODE
 # After all, we are learning a vector fiel, so it shouldn't matter too much.
 # - For this Lotka-voltera problem, tf=2 is already too much for a neural ODE to handle during training !!!!!!!!
-# - A way to combat this is to have a really small learning rate when we increase the time horizon.
-# - Also, naturally, the gradul increase of the time horison improves robustness to local minima.
+# - A way to combat this is to have a really small learning rate when we increase the time horizon. The core problem is that the physics can be wrong/unnatural after update, and the Lotka-Voltera concentrations get negative. Be careful !!
+# - Also, naturally, the gradual increase of the time horison improves robustness to local minima.
 
 ## Future work
 # - TODO Is there a reserach question there ??? Does my method of multiplier do better here !!?
@@ -276,5 +314,32 @@ ts, ys, model = main()
 
 
 
+
+# %%
+
+# rhs = model.func
+
+# ## Linearise the rhs, then compute its eigenvalues
+# def linearised_rhs(t, y, args):
+#     return jax.jacrev(rhs, argnums=1)(t, y, args)
+
+# def eigenvalues(t, y, args):
+#     return jnp.linalg.eigvals(linearised_rhs(t, y, args))
+
+# ## Send ys to the CPU
+# jax.devices("cpu")
+
+# print(ys.shape, ts.shape)
+
+# model_y, _ = model(ts, ys[10, 0])
+
+# model_y
+
+# # ## Get largest eigenvalue
+# # eigenvalues = jax.vmap(eigenvalues, in_axes=(None, 0, None))(0, ys[0, 0], None)
+
+# # ## Compute the stiffness ratio on the CPU
+# # stiffness_ratio = jnp.abs(jnp.real(eigenvalues(0, ys[0, 0], None)) / jnp.imag(eigenvalues(0, ys[0, 0], None)))
+# # ratio = jnp.abs(jnp.real(eigenvalues(0, ys[0, 0], None)) / jnp.imag(eigenvalues(0, ys[0, 0], None)))
 
 # %%
