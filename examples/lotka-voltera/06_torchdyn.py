@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 #%%
 
 ## ts and ys from data/lotka_volterra_diffrax.npz
-data = np.load('./data/lotka_voltera_diffrax.npz')
+data = np.load('./data/lotka_volterra_diffrax.npz')
 t, X = data['ts'], data['ys']
 
 X.shape, t.shape
@@ -82,7 +82,7 @@ class Learner(pl.LightningModule):
         return {'loss': loss}   
     
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=0.003)
+        return torch.optim.Adam(self.model.parameters(), lr=0.01)
 
     def train_dataloader(self):
         return trainloader
@@ -93,7 +93,7 @@ f = nn.Sequential(
         nn.Linear(2, 16),
         nn.Tanh(), 
         nn.Linear(16, 16),
-        nn.Tanh(), 
+        nn.Softplus(),          ## TODO very important !
         nn.Linear(16, 2))
 
 t_span = torch.linspace(0, 10, 100)
@@ -109,7 +109,7 @@ start = time.time()
 
 # train the Neural ODE
 learn = Learner(t_span, model)
-trainer = pl.Trainer(min_epochs=200, max_epochs=500)
+trainer = pl.Trainer(min_epochs=200, max_epochs=2500)
 trainer.fit(learn)
 
 end = time.time()
