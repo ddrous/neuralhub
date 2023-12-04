@@ -29,6 +29,7 @@ from scipy.integrate import solve_ivp
 import equinox as eqx
 
 import matplotlib.pyplot as plt
+# plt.style.use("bmh")
 
 from graphpint.utils import *
 from graphpint.integrators import *
@@ -41,7 +42,7 @@ from typing import List, Tuple, Callable
 
 #%%
 
-SEED = 27
+SEED = 00
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
@@ -50,15 +51,17 @@ SEED = 27
 integrator = dopri_integrator_diff
 
 ## Optimiser hps
-init_lr = 1e-5
+init_lr = 3e-4
 decay_rate = 0.1
 
 ## Training hps
 print_every = 100
-nb_epochs = 5
-batch_size = 128
+nb_epochs = 10000
+batch_size = 64*1
 
 cutoff = 0.1
+
+respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts)
 
 #%%
 
@@ -75,12 +78,16 @@ cutoff = 0.1
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_big.npz')
+dataset = np.load('./data/lotka_volterra_medium.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 cutoff_length = int(cutoff*data.shape[2])
 
 print("data shape:", data.shape, t_eval.shape)
+
+## Plot the first trajectory in the first environment
+# fig, ax = plt.subplots()
+# ax.plot(t_eval[:], data[0, 120, :, 0], label="Preys")
 
 # %%
 
@@ -90,7 +97,7 @@ class Encoder(eqx.Module):
     def __init__(self, traj_size, context_size, key=None):        ## TODO make this convolutional
         # super().__init__(**kwargs)
         keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(traj_size, 50, key=keys[0]), jax.nn.tanh,
+        self.layers = [eqx.nn.Linear(traj_size, 50, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(50, 20, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(20, context_size, key=keys[2]) ]
         # print("Encoder trajectory size input is:", traj_size)
@@ -109,6 +116,8 @@ class Hypernetwork(eqx.Module):
     leave_shapes: list
     static: eqx.Module
 
+    main_output_net: jnp.ndarray
+
     def __init__(self, context_size, processor, key=None):
         keys = get_new_key(key, num=3)
 
@@ -116,9 +125,12 @@ class Hypernetwork(eqx.Module):
 
         flat, self.leave_shapes, self.tree_def = flatten_pytree(proc_params)
         out_size = flat.shape[0]
+
+        self.main_output_net = flat
+
         print("Hypernetwork will output", out_size, "parameters")
 
-        self.layers = [eqx.nn.Linear(context_size, 160, key=keys[0]), jax.nn.tanh,
+        self.layers = [eqx.nn.Linear(context_size, 160, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(160, 160*4, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(160*4, out_size, key=keys[2]) ]
 
@@ -126,9 +138,37 @@ class Hypernetwork(eqx.Module):
         weights = context
         for layer in self.layers:
             weights = layer(weights)
-        # return weights
+        weights = self.main_output_net + weights
         proc_params = unflatten_pytree(weights, self.leave_shapes, self.tree_def)
         return eqx.combine(proc_params, self.static)
+
+
+class Physics(eqx.Module):
+    params: jnp.ndarray
+
+    def __init__(self, key=None):
+        self.params = jnp.abs(jax.random.normal(key, (4,)))
+
+    def __call__(self, t, x):
+        dx0 = x[0]*self.params[0] - x[0]*x[1]*self.params[1]
+        dx1 = x[0]*x[1]*self.params[2] - x[1]*self.params[3]
+        return jnp.array([dx0, dx1])
+
+class Aygmentation(eqx.Module):
+    layers: list
+
+    def __init__(self, data_size=2, width_size=10, depth=3, key=None):
+        keys = get_new_key(key, num=3)
+        self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[2]) ]
+
+    def __call__(self, t, x):
+        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        y = x
+        for layer in self.layers:
+            y = layer(y)
+        return y
 
 
 class NeuralODE(eqx.Module):
@@ -140,8 +180,8 @@ class NeuralODE(eqx.Module):
     def __call__(self, x0, t_eval, xi):
         processor = self.hypernet(xi)
 
-        xs_hat = diffrax.diffeqsolve(
-                    diffrax.ODETerm(lambda t, x, args: processor(x)),
+        solution = diffrax.diffeqsolve(
+                    diffrax.ODETerm(lambda t, x, args: processor(t, x)),
                     diffrax.Tsit5(),
                     t0=t_eval[0],
                     t1=t_eval[-1],
@@ -150,36 +190,36 @@ class NeuralODE(eqx.Module):
                     stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     max_steps=4096*1,
-                ).ys
+                )
         
-        return xs_hat
-
+        return solution.ys, solution.stats["num_steps"]
 
 class ContraNODE(eqx.Module):
     neural_ode: NeuralODE
     encoder: Encoder            ## TODO Important, this needs to accept variable length trajectorirs. A time series, basically ! 
-    encoder_input_size: int     ## Based on the above, this shouldn't be needed
+    traj_size: int              ## Based on the above, this shouldn't be needed
 
     def __init__(self, proc_data_size, proc_width_size, proc_depth, context_size, traj_size, key=None):
         keys = get_new_key(key, num=3)
-        processor = eqx.nn.MLP(
-            in_size=proc_data_size,
-            out_size=proc_data_size,
-            width_size=proc_width_size,
-            depth=proc_depth,
-            activation=jax.nn.softplus,
-            key=keys[0],
-        )
+        # processor = eqx.nn.MLP(
+        #     in_size=proc_data_size,
+        #     out_size=proc_data_size,
+        #     width_size=proc_width_size,
+        #     depth=proc_depth,
+        #     activation=jax.nn.softplus,
+        #     key=keys[0],
+        # )
+        processor = Physics(key=keys[0])
 
         self.neural_ode = NeuralODE(context_size, processor, key=keys[1])
         self.encoder = Encoder(traj_size*proc_data_size, context_size, key=keys[2])
-        self.encoder_input_size = traj_size*proc_data_size
+        self.traj_size = traj_size
 
     def __call__(self, x0, t_eval, xi):
-        traj = self.neural_ode(x0, t_eval, xi)
+        traj, nb_steps = self.neural_ode(x0, t_eval, xi)
         # print("Trajectory shape:", traj.shape)
-        new_context = self.encoder(traj[:self.encoder_input_size, :].ravel())
-        return traj, new_context
+        new_context = self.encoder(traj[:self.traj_size, :].ravel())
+        return traj, nb_steps, new_context
 
 
 # %%
@@ -216,7 +256,7 @@ def cosine_similarity(a, b):
 
 # Contrastive loss function
 def contrastive_loss(xi_a, xi_b, positive, temperature):
-    similarity = cosine_similarity(xi_a, xi_b)
+    # similarity = cosine_similarity(xi_a, xi_b)
 
     # # Positive pair (similar instances)
     # if positive:
@@ -228,22 +268,22 @@ def contrastive_loss(xi_a, xi_b, positive, temperature):
 
     ## Make the above JAX-friendly
     return jax.lax.cond(positive, 
-                        lambda x: -jnp.log(jnp.exp(x / temperature) / jnp.sum(jnp.exp(x / temperature))),
-                        lambda x: -jnp.log(1.0 - jnp.exp(x / temperature)), 
-                        operand=similarity)
+                        lambda xis: jnp.mean((xis[0]-xis[1])**2),
+                        lambda xis: jnp.max(jnp.array([0., respulsive_dist-jnp.mean((xis[0]-xis[1])**2)])), 
+                        operand=(xi_a, xi_b))
 
 # %%
 
 ### ==== Vanilla Gradient Descent optimisation ==== ####
 
 def loss_fn(params, static, batch):
-    print('\nCompiling function "loss_fn" ...\n')
+    # print('\nCompiling function "loss_fn" ...\n')
     a, xi_a, Xa, b, xi_b, Xb, t_eval = batch
 
     model = eqx.combine(params, static)
 
-    X_hat_a, xi_as = jax.vmap(model, in_axes=(0, None, None))(Xa[:, 0, :], t_eval, xi_a)
-    X_hat_b, xi_bs = jax.vmap(model, in_axes=(0, None, None))(Xb[:, 0, :], t_eval, xi_b)
+    X_hat_a, nb_steps_a, xi_as = jax.vmap(model, in_axes=(0, None, None))(Xa[:, 0, :], t_eval, xi_a)
+    X_hat_b, nb_steps_b, xi_bs = jax.vmap(model, in_axes=(0, None, None))(Xb[:, 0, :], t_eval, xi_b)
 
     # print("Xa shape:", Xa.shape, "X_hat_a shape:", X_hat_a.shape, "t_eval shape:", t_eval.shape)
 
@@ -258,7 +298,8 @@ def loss_fn(params, static, batch):
     # term4 = MAKE SURE THE xi_as are all constant (i.e. the same) for each a
 
     loss_val = term1 + term2
-    return loss_val, (new_xi_a, new_xi_b, term1, term2, term3)
+    nb_steps = jnp.sum(nb_steps_a + nb_steps_b)
+    return loss_val, (new_xi_a, new_xi_b, nb_steps, term1, term2, term3)
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -273,16 +314,17 @@ def train_step(params, static, batch, opt_state):
     return params, opt_state, loss, aux_data
 
 
-def make_contrastive_data_batch(batch_id, xis, data, batch_size, cutoff_length):
+# @partial(jax.jit, static_argnums=())
+def make_contrastive_batch(batch_id, xis, data, batch_size, cutoff_length):
     """ Make contrastive data from a batch of data """
     nb_envs = data.shape[0]
     nb_examples = data.shape[1]
 
-    # a = np.broadcast_to(np.random.randint(0, nb_envs), (batch_size,))
-    # b = np.broadcast_to(np.random.randint(0, nb_envs), (batch_size,))
+    a = np.random.randint(0, int(nb_envs*1.3))           ## =========== TODO!!!!: increase the chances of a==b
+    b = np.random.randint(0, int(nb_envs*1.3))
 
-    a = np.random.randint(0, nb_envs)           ## TODO: increase the chances of a==b
-    b = np.random.randint(0, nb_envs)
+    if a>=nb_envs or b>=nb_envs:
+        a = b = np.random.randint(0, nb_envs)
 
     xi_a = xis[a]
     xi_b = xis[b]
@@ -302,12 +344,10 @@ total_steps = nb_epochs
 # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
 sched = optax.piecewise_constant_schedule(init_value=init_lr,
                 boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                        int(total_steps*0.5):0.15,
+                                        int(total_steps*0.5):0.2,
                                         int(total_steps*0.75):0.5})
-fig, ax = plt.subplots(1, 1, figsize=(6, 3.5))
 
 start_time = time.time()
-
 
 print(f"\n\n=== Beginning Training ... ===")
 
@@ -315,38 +355,47 @@ opt = optax.adam(sched)
 opt_state = opt.init(params)
 
 xis = np.random.normal(size=(data.shape[0], 2))
+init_xis = xis.copy()
 
 losses = []
+nb_steps = []
+aeqb_sum = 0
 for epoch in range(nb_epochs):
 
     nb_batches = 0
     loss_sum = jnp.zeros(4)
+    nb_steps_eph = 0
     batch_id = 0
+    aeqb = 0
     for i in range(data.shape[1]//batch_size):
-        _, batch = make_contrastive_data_batch(i, xis, data, batch_size, cutoff_length)
+        _, batch = make_contrastive_batch(i, xis, data, batch_size, cutoff_length)
     
-        params, opt_state, loss, (xi_a, xi_b, term1, term2, term3) = train_step(params, static, batch, opt_state)
+        params, opt_state, loss, (xi_a, xi_b, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
 
         a, _, _, b, _, _, _ = batch
         xis[a], xis[b] = xi_a, xi_b
+        if a==b: aeqb += 1
 
         loss_sum += jnp.array([loss, term1, term2, term3])
+        nb_steps_eph += nb_steps_val
         nb_batches += 1
+
+    # print(f"We got a={a}, and b={b}")
+    # print(f"\nPercentage of a==b: {(aeqb/nb_batches)*100:.2f}%\n")
+    aeqb_sum += (aeqb/nb_batches)*100
 
     loss_epoch = loss_sum/nb_batches
     losses.append(loss_epoch)
+    nb_steps.append(nb_steps_eph)
 
     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-        print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.5f}     TrajLoss: {loss_epoch[1]:-.5f}      ContrastLoss: {loss_epoch[2]:-.5f}      ParamsLoss: {loss_epoch[3]:-.5f}", flush=True)
+        print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Contrast: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
+        # print(f"\nPercentage of a==b: {(aeqb/nb_batches)*100:.2f}%\n")
+
+print(f"\nAverage Percentage of a==b: {aeqb_sum/nb_epochs:.2f}%\n")
 
 losses = jnp.vstack(losses)
-# ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}', ax=ax);
-ax = sbplot(losses, label=["Total", "Traj", "Contrast", "Params"], x_label='Epoch', y_scale="log", title='Loss Terms', ax=ax);
-plt.savefig(f"data/loss_simple.png", dpi=300, bbox_inches='tight')
-# plt.show()
-plt.legend()
-fig.canvas.draw()
-fig.canvas.flush_events()
+nb_steps = jnp.array(nb_steps)
 
 wall_time = time.time() - start_time
 time_in_hmsecs = seconds_to_hours(wall_time)
@@ -355,49 +404,91 @@ print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 # %%
 
 def test_model(params, static, batch):
-    xi, X0, t = batch
+    xi, X0, t_eval = batch
 
     model = eqx.combine(params, static)
-    X_hat, _ = model(X0, t, xi)
+    X_hat, _, _ = model(X0, t_eval, xi)
 
     return X_hat, _
 
-# for e in range(data.shape[0]):
-
 e = np.random.randint(0, data.shape[0])
-X = data[e, 0, :, :]
+# e = 0
 
-X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_eval))
+# test_length = cutoff_length
+test_length = data.shape[2]
+t_test = t_eval[:test_length]
+X = data[e, 0, :test_length, :]
 
-# print("X_hat values", X_hat)
+X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_test))
 
-ax = sbplot(X_hat[:,0], X_hat[:,1], x_label='Preys', y_label='Predators', label=f'Pred', title=f'Phase space, env {e}')
-ax = sbplot(X[:,0], X[:,1], "--", lw=1, label=f'True', ax=ax)
+fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 
-# plt.savefig(f"data/contrastnode_test_env{e}_traj{i}.png", dpi=300, bbox_inches='tight')
+ax['A'].plot(t_test, X[:, 0], c="dodgerblue", label="Preys (GT)")
+ax['A'].plot(t_test, X_hat[:, 0], ".", c="navy", label="Preys (NODE)")
 
-#%% 
-## Plot and annotate all the xis points along with text labels
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+ax['A'].plot(t_test, X[:, 1], c="violet", label="Predators (GT)")
+ax['A'].plot(t_test, X_hat[:, 1], ".", c="purple", label="Predators (NODE)")
 
-## Named colors matplotlib
-colors = ['white', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple']
+ax['A'].set_xlabel("Time")
+ax['A'].set_title("Trajectories")
+ax['A'].legend()
 
-ax.scatter(xis[:,0], xis[:,1], s=20, c=colors, marker='x')
+ax['B'].plot(X[:, 0], X[:, 1], c="turquoise", label="GT")
+ax['B'].plot(X_hat[:, 0], X_hat[:, 1], ".", c="teal", label="Neural ODE")
+ax['B'].set_xlabel("Preys")
+ax['B'].set_ylabel("Predators")
+ax['B'].set_title("Phase space")
+ax['B'].legend()
+
+# ax['C'].plot(losses, label=["Total", "Traj", "Contrast", "Params"])
+mke = np.ceil(losses.shape[0]/100).astype(int)
+ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
+ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=3, label="Traj", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=3, label="Contrast", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
+ax['C'].set_xlabel("Epochs")
+ax['C'].set_title("Loss Terms")
+ax['C'].set_yscale('log')
+ax['C'].legend()
+
+ax['D'].plot(nb_steps, c="brown")
+ax['D'].set_xlabel("Epochs")
+ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs)")
+ax['D'].set_yscale('log')
+
+xis_all = np.vstack([xis, init_xis])
+eps = 0.1
+xmin, xmax = xis_all[:,0].min()-eps, xis_all[:,0].max()+eps
+ymin, ymax = xis_all[:,1].min()-eps, xis_all[:,1].max()+eps
+colors = ['dodgerblue', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple', 'brown']
+
+ax['E'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors, marker='X')
+ax['F'].scatter(xis[:,0], xis[:,1], s=30, c=colors, marker='X')
+for i, (x, y) in enumerate(init_xis):
+    ax['E'].annotate(str(i), (x, y), fontsize=8)
 for i, (x, y) in enumerate(xis):
-    ax.annotate(str(i), (x, y), fontsize=8)
+    ax['F'].annotate(str(i), (x, y), fontsize=8)
+ax['E'].set_title(r'Initial Contexts ($\xi_e$)')
+ax['F'].set_title(r'Final Contexts')
+# ax['E'].set_xlim(xmin, xmax)
+# ax['E'].set_ylim(ymin, ymax)
+# ax['F'].set_xlim(xmin, xmax)
+# ax['F'].set_ylim(ymin, ymax)
 
-# lim = 0.25
-# ax.set_xlim(-lim, lim)
-# ax.set_ylim(-lim, lim)
-ax.set_title(r'Environment Contexts $\xi_e$')
+plt.suptitle(f"Results for traj=0, in env={e}", fontsize=14)
+
+plt.tight_layout()
+plt.savefig("data/neural_ode_contrast_node.png", dpi=300, bbox_inches='tight')
+plt.show()
+
+
 
 #%% 
 
-# model = eqx.combine(params, static)
+model = eqx.combine(params, static)
 
-# eqx.tree_serialise_leaves("data/model_02.eqx", model)
-# model = eqx.tree_deserialise_leaves("data/model_01.eqx", model)
+eqx.tree_serialise_leaves("data/model_09.eqx", model)
+# model = eqx.tree_deserialise_leaves("data/model_09.eqx", model)
 
 # %% [markdown]
 
