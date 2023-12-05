@@ -11,20 +11,20 @@ import jax.numpy as jnp
 import diffrax
 
 # Define the Lotka-Volterra system
-# def lotka_volterra(t, state, alpha, beta, delta, gamma):
-#     x, y = state
-#     dx_dt = alpha * x - beta * x * y
-#     dy_dt = delta * x * y - gamma * y
-#     return [dx_dt, dy_dt]
-
-@jax.jit
 def lotka_volterra(t, state, alpha, beta, delta, gamma):
-    # jax.debug.breakpoint()
-    # print("State is", state.shape)
-    x, y = state[0], state[1]
+    x, y = state
     dx_dt = alpha * x - beta * x * y
     dy_dt = delta * x * y - gamma * y
-    return jnp.array([dx_dt, dy_dt])
+    return [dx_dt, dy_dt]
+
+# @jax.jit
+# def lotka_volterra(t, state, alpha, beta, delta, gamma):
+#     # jax.debug.breakpoint()
+#     # print("State is", state.shape)
+#     x, y = state[0], state[1]
+#     dx_dt = alpha * x - beta * x * y
+#     dy_dt = delta * x * y - gamma * y
+#     return jnp.array([dx_dt, dy_dt])
 
 
 ## Test the function
@@ -32,22 +32,37 @@ def lotka_volterra(t, state, alpha, beta, delta, gamma):
 # print("Result is", res)
 
 # Define the set of parameter possibilities
+# environments = [
+#     {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.0},    ## TODO remove this!
+#     {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.5},
+#     {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.5},
+#     {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.5},
+#     {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.75},
+#     {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 1.0},
+#     {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.75},
+#     {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 1.0},
+#     {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.75},
+#     {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 1.0},
+# ]
+
+
 environments = [
-    {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.0},    ## TODO remove this!
-    {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.5},
-    {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.5},
-    {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.5},
-    {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.75},
-    {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 1.0},
-    {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.75},
-    {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 1.0},
-    {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.75},
-    {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 1.0}
+    {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 2.5},    ## TODO remove this!
+    {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 3.0},
+    {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 3.5},
+    {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 2.5},
+    {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.0},
+    {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.5},
+    {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 2.5},
+    {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 3.0},
+    {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 3.5},
+    # {"alpha": 1.5, "beta": 1.25, "gamma": 1.0, "delta": 1.0},
 ]
 
-n_traj_per_env = 128*1
+
+n_traj_per_env = 128*10
 # n_traj_per_env = 1
-n_steps_per_traj = 51
+n_steps_per_traj = 501
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
 
@@ -92,8 +107,8 @@ prey_concentration, predator_concentration = solution.y
 
 # Create an animation of the Lotka-Volterra system
 fig, ax = plt.subplots()
-ax.set_xlim(0, 1.8)
-ax.set_ylim(0, 2.2)
+ax.set_xlim(0, np.max(prey_concentration))
+ax.set_ylim(0, np.max(predator_concentration))
 ax.set_xlabel('Preys')
 ax.set_ylabel('Predators')
 
