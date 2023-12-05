@@ -6,8 +6,6 @@
 
 
 #%%
-import itertools
-import random
 import jax
 
 # from jax import config
@@ -58,7 +56,7 @@ decay_rate = 0.1
 
 ## Training hps
 print_every = 100
-nb_epochs = 500
+nb_epochs = 10000
 batch_size = 64*1
 
 cutoff = 0.1
@@ -80,7 +78,7 @@ respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_big.npz')
+dataset = np.load('./data/lotka_volterra_medium.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 cutoff_length = int(cutoff*data.shape[2])
@@ -130,17 +128,14 @@ class Hypernetwork(eqx.Module):
 
         self.main_output_net = flat
 
-        # print("Hypernetwork will output", out_size, "parameters")
+        print("Hypernetwork will output", out_size, "parameters")
 
         self.layers = [eqx.nn.Linear(context_size, 160, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(160, 160*4, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(160*4, out_size, key=keys[2]) ]
 
-        # print("Hypernetwork got created:", context_size)
-
     def __call__(self, context):
         weights = context
-        # print("Hypernetwork got an input of size:", weights.size)
         for layer in self.layers:
             weights = layer(weights)
         weights = self.main_output_net + weights
@@ -183,7 +178,6 @@ class NeuralODE(eqx.Module):
         self.hypernet = Hypernetwork(context_size, processor, key=key)
 
     def __call__(self, x0, t_eval, xi):
-        # print("NeuralODE got an input of size:", x0.shape, t_eval.shape, xi.shape)
         processor = self.hypernet(xi)
 
         solution = diffrax.diffeqsolve(
@@ -273,7 +267,7 @@ def contrastive_loss(xi_a, xi_b, positive, temperature):
     #     return -jnp.log(1.0 - jnp.exp(similarity / temperature))
 
     ## Make the above JAX-friendly
-    return jax.lax.cond(positive[0], 
+    return jax.lax.cond(positive, 
                         lambda xis: jnp.mean((xis[0]-xis[1])**2),
                         lambda xis: jnp.max(jnp.array([0., respulsive_dist-jnp.mean((xis[0]-xis[1])**2)])), 
                         operand=(xi_a, xi_b))
@@ -282,35 +276,30 @@ def contrastive_loss(xi_a, xi_b, positive, temperature):
 
 ### ==== Vanilla Gradient Descent optimisation ==== ####
 
-@partial(jax.vmap, in_axes=(None, None, 0))
-def meanify_xis(es, xis, e):
-    # return jnp.mean(xis[es==e], axis=0)
-    return jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum()
-
 def loss_fn(params, static, batch):
     # print('\nCompiling function "loss_fn" ...\n')
     a, xi_a, Xa, b, xi_b, Xb, t_eval = batch
-    print("Shapes of elements in a batch:", a.shape, xi_a.shape, Xa.shape, b.shape, xi_b.shape, Xb.shape, t_eval.shape, "\n")
 
     model = eqx.combine(params, static)
 
-    X_hat_a, nb_steps_a, xi_a = jax.vmap(model, in_axes=(0, None, 0))(Xa[:, 0, :], t_eval, xi_a)
-    X_hat_b, nb_steps_b, xi_b = jax.vmap(model, in_axes=(0, None, 0))(Xb[:, 0, :], t_eval, xi_b)
+    X_hat_a, nb_steps_a, xi_as = jax.vmap(model, in_axes=(0, None, None))(Xa[:, 0, :], t_eval, xi_a)
+    X_hat_b, nb_steps_b, xi_bs = jax.vmap(model, in_axes=(0, None, None))(Xb[:, 0, :], t_eval, xi_b)
 
     # print("Xa shape:", Xa.shape, "X_hat_a shape:", X_hat_a.shape, "t_eval shape:", t_eval.shape)
 
     term1 = l2_norm(Xa, X_hat_a) + l2_norm(Xb, X_hat_b)
-    term2 = jax.vmap(contrastive_loss, in_axes=(0, 0, 0, None))(xi_a, xi_b, a==b, 1.0).mean()
-    # term2 = contrastive_loss(xi_a, xi_b, a==b, 1.0)
+    # term2 = jax.vmap(contrastive_loss, in_axes=(0, 0, 0, None))(xi_as, xi_bs, a==b, 1.0).mean()
+    term2 = contrastive_loss(xi_a, xi_b, a==b, 1.0)
     term3 = p_norm(params)
 
-    es, xis = jnp.concatenate([a, b]), jnp.concatenate([xi_a, xi_b])
-    # meanify_xis = jax.vmap(lambda es, xis, e: jnp.mean(xis[es==e], axis=0), in_axes=(None, None, 0))
-    new_xis = meanify_xis(es, xis, jnp.arange(data.shape[0]))
+    new_xi_a = jnp.mean(xi_as, axis=0)
+    new_xi_b = jnp.mean(xi_bs, axis=0)
+    # new_xi_a, new_xi_b = xi_a, xi_b
+    # term4 = MAKE SURE THE xi_as are all constant (i.e. the same) for each a
 
     loss_val = term1 + term2
     nb_steps = jnp.sum(nb_steps_a + nb_steps_b)
-    return loss_val, (new_xis, nb_steps, term1, term2, term3)
+    return loss_val, (new_xi_a, new_xi_b, nb_steps, term1, term2, term3)
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -325,81 +314,28 @@ def train_step(params, static, batch, opt_state):
     return params, opt_state, loss, aux_data
 
 
-# # @partial(jax.jit, static_argnums=())
-# def make_contrastive_batch(batch_id, xis, data, batch_size, cutoff_length):
-#     """ Make contrastive data from a batch of data """
-#     nb_envs = data.shape[0]
-#     nb_examples = data.shape[1]
-
-#     a = np.random.randint(0, int(nb_envs*1.3))           ## =========== TODO!!!!: increase the chances of a==b
-#     b = np.random.randint(0, int(nb_envs*1.3))
-
-#     if a>=nb_envs or b>=nb_envs:
-#         a = b = np.random.randint(0, nb_envs)
-
-#     xi_a = xis[a]
-#     xi_b = xis[b]
-
-#     batch_id = batch_id % (nb_examples//batch_size)
-#     start, finish = batch_id*batch_size, (batch_id+1)*batch_size
-
-#     Xa = data[a, start:finish, :cutoff_length, :]
-#     Xb = data[b, start:finish, :cutoff_length, :]
-
-#     return batch_id+1, (a, xi_a, Xa, b, xi_b, Xb, t_eval[:cutoff_length])
-
-
-
-@partial(jax.jit, static_argnums=(3,))
-def make_contrastive_batch(batch_id, xis, data, cutoff_length):
-    """ Make contrastive data from a batch of data
-        Sample 2 trajectories per environment
-        Constitute a set of n_env positive pairs (same environment)
-        For the negative pairs, perform a combinatorial product of the environments """
+# @partial(jax.jit, static_argnums=())
+def make_contrastive_batch(batch_id, xis, data, batch_size, cutoff_length):
+    """ Make contrastive data from a batch of data """
     nb_envs = data.shape[0]
     nb_examples = data.shape[1]
 
-    traj1, traj2 = np.random.randint(0, nb_examples, size=(2))
+    a = np.random.randint(0, int(nb_envs*1.3))           ## =========== TODO!!!!: increase the chances of a==b
+    b = np.random.randint(0, int(nb_envs*1.3))
 
-    ## Get the positive pairs
-    batch_pos = []
-    for e in range(nb_envs):
-        a = e
-        b = e
-        xi_a = xis[a]
-        xi_b = xis[b]
-        Xa = data[a, traj1:traj1+1, :cutoff_length, :]
-        Xb = data[b, traj2:traj2+1, :cutoff_length, :]
-        batch_pos.append((a, xi_a, Xa, b, xi_b, Xb))
+    if a>=nb_envs or b>=nb_envs:
+        a = b = np.random.randint(0, nb_envs)
 
-    ## Get the negative pairs (get a and b from combinatorials)
-    batch_neg = []
-    for (a,b) in itertools.combinations(range(nb_envs), 2):
-        xi_a = xis[a]
-        xi_b = xis[b]
-        Xa = data[a, traj1:traj1+1, :cutoff_length, :]
-        Xb = data[b, traj2:traj2+1, :cutoff_length, :]
-        batch_neg.append((a, xi_a, Xa, b, xi_b, Xb))
+    xi_a = xis[a]
+    xi_b = xis[b]
 
-    batch = batch_pos + batch_neg
-    # batch = jnp.vstack(batch_pos + batch_neg)
-    ## Shuffle the batch
-    # print("Batch size:", list(np.random.permutation(len(batch))))
-    # batch = batch[list(np.random.permutation(len(batch)))]
-    random.shuffle(batch)
+    batch_id = batch_id % (nb_examples//batch_size)
+    start, finish = batch_id*batch_size, (batch_id+1)*batch_size
 
-    # as_, xi_as, Xas, bs, xi_bs, Xbs = zip(*batch)     
-    list_of_tuples = zip(*batch)        ## List of size 6, each element is a tuple of size batch_size
-    list_of_arrays = map(lambda arr: jnp.vstack(arr), list_of_tuples)
+    Xa = data[a, start:finish, :cutoff_length, :]
+    Xb = data[b, start:finish, :cutoff_length, :]
 
-    # [print("Shape of array:", arr.shape) for arr in list_of_arrays]
-
-    # jax.debug.breakpoint()
-
-    return batch_id+1, list_of_arrays+[t_eval[:cutoff_length]]
-
-## A vectorised version of the above
-# def make_contrastive_batch(batch_id, xis, data, cutoff_length, batch_size):
+    return batch_id+1, (a, xi_a, Xa, b, xi_b, Xb, t_eval[:cutoff_length])
 
 
 total_steps = nb_epochs
@@ -408,7 +344,7 @@ total_steps = nb_epochs
 # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
 sched = optax.piecewise_constant_schedule(init_value=init_lr,
                 boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                        int(total_steps*0.5):0.1,
+                                        int(total_steps*0.5):0.2,
                                         int(total_steps*0.75):0.5})
 
 start_time = time.time()
@@ -430,16 +366,15 @@ for epoch in range(nb_epochs):
     loss_sum = jnp.zeros(4)
     nb_steps_eph = 0
     batch_id = 0
-    # aeqb = 0
+    aeqb = 0
     for i in range(data.shape[1]//batch_size):
-        # _, batch = make_contrastive_batch(i, xis, data, batch_size, cutoff_length)
-        _, batch = make_contrastive_batch(i, xis, data, cutoff_length)
+        _, batch = make_contrastive_batch(i, xis, data, batch_size, cutoff_length)
     
-        params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
+        params, opt_state, loss, (xi_a, xi_b, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
 
         a, _, _, b, _, _, _ = batch
-        # xis[a], xis[b] = xi_a, xi_b
-        # if a==b: aeqb += 1
+        xis[a], xis[b] = xi_a, xi_b
+        if a==b: aeqb += 1
 
         loss_sum += jnp.array([loss, term1, term2, term3])
         nb_steps_eph += nb_steps_val
@@ -447,7 +382,7 @@ for epoch in range(nb_epochs):
 
     # print(f"We got a={a}, and b={b}")
     # print(f"\nPercentage of a==b: {(aeqb/nb_batches)*100:.2f}%\n")
-    # aeqb_sum += (aeqb/nb_batches)*100
+    aeqb_sum += (aeqb/nb_batches)*100
 
     loss_epoch = loss_sum/nb_batches
     losses.append(loss_epoch)
@@ -455,9 +390,9 @@ for epoch in range(nb_epochs):
 
     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
         print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Contrast: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
-        # print(f"\nPercentage of a==b: {np.mean((a==b).astype(int))*100:.2f}%\n")
+        # print(f"\nPercentage of a==b: {(aeqb/nb_batches)*100:.2f}%\n")
 
-# print(f"\nAverage Percentage of a==b: {aeqb_sum/nb_epochs:.2f}%\n")
+print(f"\nAverage Percentage of a==b: {aeqb_sum/nb_epochs:.2f}%\n")
 
 losses = jnp.vstack(losses)
 nb_steps = jnp.array(nb_steps)
@@ -476,16 +411,13 @@ def test_model(params, static, batch):
 
     return X_hat, _
 
-nb_envs = data.shape[0]
-e = np.random.randint(0, nb_envs)
+e = np.random.randint(0, data.shape[0])
 # e = 0
-traj = np.random.randint(0, data.shape[1])
-# traj = 100
 
 # test_length = cutoff_length
 test_length = data.shape[2]
 t_test = t_eval[:test_length]
-X = data[e, traj, :test_length, :]
+X = data[e, 0, :test_length, :]
 
 X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_test))
 
@@ -530,8 +462,8 @@ xmin, xmax = xis_all[:,0].min()-eps, xis_all[:,0].max()+eps
 ymin, ymax = xis_all[:,1].min()-eps, xis_all[:,1].max()+eps
 colors = ['dodgerblue', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple', 'brown']
 
-ax['E'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors[:nb_envs], marker='X')
-ax['F'].scatter(xis[:,0], xis[:,1], s=30, c=colors[:nb_envs], marker='X')
+ax['E'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors, marker='X')
+ax['F'].scatter(xis[:,0], xis[:,1], s=30, c=colors, marker='X')
 for i, (x, y) in enumerate(init_xis):
     ax['E'].annotate(str(i), (x, y), fontsize=8)
 for i, (x, y) in enumerate(xis):
@@ -546,7 +478,7 @@ ax['F'].set_title(r'Final Contexts')
 plt.suptitle(f"Results for traj=0, in env={e}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig("data/contrast_node.png", dpi=300, bbox_inches='tight')
+plt.savefig("data/neural_ode_contrast_node.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 
