@@ -49,7 +49,7 @@ from typing import List, Tuple, Callable
 
 #%%
 
-SEED = 20
+SEED = 21
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
@@ -63,11 +63,11 @@ decay_rate = 0.1
 
 ## Training hps
 print_every = 10
-nb_epochs = 1
+nb_epochs = 3
 # batch_size = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
-nb_trajs_per_batch_per_env = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
+nb_trajs_per_batch_per_env = 2*10              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
 
-cutoff = 0.1
+cutoff = 0.05
 
 respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts)
 
@@ -193,8 +193,8 @@ class Processor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        # return self.physics(t, x) + self.augmentation(t, x)
-        return self.augmentation(t, x)
+        return self.physics(t, x) + self.augmentation(t, x)
+        # return self.augmentation(t, x)
 
 
 class NeuralODE(eqx.Module):
