@@ -57,8 +57,8 @@ init_lr = 3e-4
 decay_rate = 0.1
 
 ## Training hps
-print_every = 100
-nb_epochs = 500
+print_every = 10
+nb_epochs = 250
 batch_size = 64*1
 
 cutoff = 0.1
@@ -159,10 +159,10 @@ class Physics(eqx.Module):
         dx1 = x[0]*x[1]*self.params[2] - x[1]*self.params[3]
         return jnp.array([dx0, dx1])
 
-class Aygmentation(eqx.Module):
+class Augmentation(eqx.Module):
     layers: list
 
-    def __init__(self, data_size=2, width_size=10, depth=3, key=None):
+    def __init__(self, data_size, width_size, depth, key=None):
         keys = get_new_key(key, num=3)
         self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
@@ -174,6 +174,19 @@ class Aygmentation(eqx.Module):
         for layer in self.layers:
             y = layer(y)
         return y
+
+class Processor(eqx.Module):
+    physics: Physics
+    augmentation: Augmentation
+
+    def __init__(self, data_size, width_size, depth, key=None):
+        keys = get_new_key(key, num=2)
+        self.physics = Physics(key=keys[0])
+        self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
+
+    def __call__(self, t, x):
+        # return self.physics(t, x) + self.augmentation(t, x)
+        return self.augmentation(t, x)
 
 
 class NeuralODE(eqx.Module):
@@ -215,7 +228,8 @@ class ContraNODE(eqx.Module):
         #     activation=jax.nn.softplus,
         #     key=keys[0],
         # )
-        processor = Physics(key=keys[0])
+        # processor = Physics(key=keys[0])
+        processor = Processor(proc_data_size, proc_width_size, proc_depth, key=keys[0])
 
         self.neural_ode = NeuralODE(context_size, processor, key=keys[1])
         self.encoder = Encoder(traj_size*proc_data_size, context_size, key=keys[2])
@@ -302,13 +316,13 @@ def loss_fn(params, static, batch):
     term1 = l2_norm(Xa, X_hat_a) + l2_norm(Xb, X_hat_b)
     term2 = jax.vmap(contrastive_loss, in_axes=(0, 0, 0, None))(xi_a, xi_b, a==b, 1.0).mean()
     # term2 = contrastive_loss(xi_a, xi_b, a==b, 1.0)
-    term3 = p_norm(params)
+    term3 = p_norm(params.neural_ode.hypernet.layers)
 
     es, xis = jnp.concatenate([a, b]), jnp.concatenate([xi_a, xi_b])
-    # meanify_xis = jax.vmap(lambda es, xis, e: jnp.mean(xis[es==e], axis=0), in_axes=(None, None, 0))
     new_xis = meanify_xis(es, xis, jnp.arange(data.shape[0]))
 
-    loss_val = term1 + term2
+    # loss_val = term1 + term2
+    loss_val = term1 + term2 + 1e-3*term3
     nb_steps = jnp.sum(nb_steps_a + nb_steps_b)
     return loss_val, (new_xis, nb_steps, term1, term2, term3)
 
@@ -513,7 +527,7 @@ mke = np.ceil(losses.shape[0]/100).astype(int)
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
 ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=3, label="Traj", color="grey", linewidth=1, alpha=0.5)
 ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=3, label="Contrast", color="grey", linewidth=1, alpha=0.5)
-ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
+# ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
 ax['C'].set_yscale('log')
