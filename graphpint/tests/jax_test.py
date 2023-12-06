@@ -26,7 +26,8 @@ def f(x):  # function we're benchmarking (works in both NumPy & JAX)
   return x.T @ (x - x.mean(axis=0))
 
 start = time.time()
-x_np = np.ones((100, 100), dtype=np.float32)  # same as JAX default dtype
+for _ in range(1000):
+  x_np = np.ones((10000, 10000), dtype=np.float32)  # same as JAX default dtype
 f(x_np)  # measure NumPy runtime
 
 # x_jax = jax.device_put(x_np)  # measure JAX device transfer time

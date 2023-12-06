@@ -19,6 +19,9 @@ import jax
 # jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
+import os
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
 print("\n############# Generalising Lotka-Volterra with a Contrastive Hypernetwork #############\n")
 print("Using JAX, with available devices:", jax.devices())
 
@@ -63,9 +66,9 @@ decay_rate = 0.1
 
 ## Training hps
 print_every = 10
-nb_epochs = 150
+nb_epochs = 1
 # batch_size = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
-nb_trajs_per_batch_per_env = 2*10              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
+nb_trajs_per_batch_per_env = 2*128              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
 
 cutoff = 0.1
 
@@ -88,7 +91,7 @@ train = True
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_small.npz')
+dataset = np.load('./data/lotka_volterra_big.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 nb_envs = data.shape[0]
@@ -335,7 +338,7 @@ def train_step(params, static, batch, opt_state):
     return params, opt_state, loss, aux_data
 
 
-# @partial(jax.jit, static_argnums=(3,))
+@partial(jax.jit, static_argnums=(2,3))
 def make_contrastive_batch(xis, data, cutoff_length, nb_trajs_per_batch_per_env, key):      ## TODO: benchmark and save these btaches to disk
     """ Make contrastive data from a batch of data
         Sample 2 trajectories to all the environments environment (same init condition)
@@ -344,8 +347,8 @@ def make_contrastive_batch(xis, data, cutoff_length, nb_trajs_per_batch_per_env,
 
     def batch_from_2_trajs(key):
         # new_key = get_new_key(key, num=1)
-        traj1, traj2 = jax.random.randint(key, (2,), 0, nb_trajs_per_env)
-        # traj1, traj2 = np.random.randint(0, nb_trajs_per_env, size=(2))
+        # traj1, traj2 = jax.random.randint(key, (2,), 0, nb_trajs_per_env)
+        traj1, traj2 = np.random.randint(0, nb_trajs_per_env, size=(2))
 
         # jax.debug.print("Traj1: {} Traj2 {}", traj1, traj2 )
 

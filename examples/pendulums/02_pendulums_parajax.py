@@ -53,7 +53,7 @@ decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 5000
+nb_epochs = 500
 batch_size = 500
 
 ## Plotting hps 
