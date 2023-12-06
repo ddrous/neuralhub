@@ -1,6 +1,11 @@
 
 #%%[markdown]
 # # Contrastive Neural ODE for generalising the Lotka-Volterra systems
+# - Make note of the batch formed by combinatorials. 
+# - We randmly sample two trajectories from each environment and form a batch of positive pairs (same environment) and negative pairs (different environments). 
+# - To make it easy. All the environments have the same initial conditions for their trajectories. Rather than having a unique init cond for all.
+# - So, the batch is of size (nb_envs*(nb_envs-1)//2 + nb_envs) * (nb_trajs_per_batch_per_env//2).
+
 
 ### Summary
 
@@ -14,11 +19,11 @@ import jax
 # jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
-print("\n############# Lotka-Volterra with Neural ODE #############\n")
-print("Available devices:", jax.devices())
+print("\n############# Generalising Lotka-Volterra with a Contrastive Hypernetwork #############\n")
+print("Using JAX, with available devices:", jax.devices())
 
 import jax.numpy as jnp
-import jax.scipy as jsp
+# import jax.scipy as jsp
 import jax.scipy.optimize
 import jax.lax
 
@@ -44,13 +49,13 @@ from typing import List, Tuple, Callable
 
 #%%
 
-SEED = 00
+SEED = 20
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
 # integrator = rk4_integrator
 # integrator = dopri_integrator
-integrator = dopri_integrator_diff
+# integrator = dopri_integrator_diff
 
 ## Optimiser hps
 init_lr = 3e-4
@@ -58,12 +63,15 @@ decay_rate = 0.1
 
 ## Training hps
 print_every = 10
-nb_epochs = 250
-batch_size = 64*1
+nb_epochs = 1
+# batch_size = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
+nb_trajs_per_batch_per_env = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
 
 cutoff = 0.1
 
 respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts)
+
+train = True
 
 #%%
 
@@ -83,13 +91,15 @@ respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts
 dataset = np.load('./data/lotka_volterra_big.npz')
 data, t_eval = dataset['X'], dataset['t']
 
-cutoff_length = int(cutoff*data.shape[2])
+nb_envs = data.shape[0]
+nb_trajs_per_env = data.shape[1]
+nb_steps_per_traj = data.shape[2]
+data_size = data.shape[3]
 
-print("data shape:", data.shape, t_eval.shape)
+batch_size = (nb_envs*(nb_envs-1)//2 + nb_envs) * (nb_trajs_per_batch_per_env//2)       ## This is actual number of pairs in a batch
+cutoff_length = int(cutoff*nb_steps_per_traj)
 
-## Plot the first trajectory in the first environment
-# fig, ax = plt.subplots()
-# ax.plot(t_eval[:], data[0, 120, :, 0], label="Preys")
+print("Data and evaluation time shapes:", data.shape, t_eval.shape)
 
 # %%
 
@@ -135,8 +145,6 @@ class Hypernetwork(eqx.Module):
         self.layers = [eqx.nn.Linear(context_size, 160, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(160, 160*4, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(160*4, out_size, key=keys[2]) ]
-
-        # print("Hypernetwork got created:", context_size)
 
     def __call__(self, context):
         weights = context
@@ -237,70 +245,56 @@ class ContraNODE(eqx.Module):
 
     def __call__(self, x0, t_eval, xi):
         traj, nb_steps = self.neural_ode(x0, t_eval, xi)
-        # print("Trajectory shape:", traj.shape)
         new_context = self.encoder(traj[:self.traj_size, :].ravel())
         return traj, nb_steps, new_context
 
 
 # %%
 
-model_keys = get_new_key(SEED, num=2)
+model_key, training_key, testing_key = get_new_key(SEED, num=3)
 
 model = ContraNODE(proc_data_size=2, 
                    proc_width_size=16, 
                    proc_depth=3, 
                    context_size=2, 
                    traj_size=cutoff_length, 
-                   key=model_keys[0])
+                   key=model_key)
 
 params, static = eqx.partition(model, eqx.is_array)
-
 
 
 # %%
 
 
-def p_norm(params):
+def params_norm(params):
     """ norm of the parameters """
     return jnp.array([jnp.linalg.norm(x) for x in jax.tree_util.tree_leaves(params)]).sum()
 
 def l2_norm(X, X_hat):
     total_loss = jnp.mean((X - X_hat)**2, axis=-1)   ## Norm of d-dimensional vectors
+    # return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
     return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
 
-# Cosine similarity function
-def cosine_similarity(a, b):
-    a_normalized = a / jnp.linalg.norm(a, axis=-1, keepdims=True)
-    b_normalized = b / jnp.linalg.norm(b, axis=-1, keepdims=True)
-    return jnp.sum(a_normalized * b_normalized, axis=-1)
+# # Cosine similarity function
+# def cosine_similarity(a, b):
+#     a_normalized = a / jnp.linalg.norm(a, axis=-1, keepdims=True)
+#     b_normalized = b / jnp.linalg.norm(b, axis=-1, keepdims=True)
+#     return jnp.sum(a_normalized * b_normalized, axis=-1)
 
 # Contrastive loss function
 def contrastive_loss(xi_a, xi_b, positive, temperature):
-    # similarity = cosine_similarity(xi_a, xi_b)
-
-    # # Positive pair (similar instances)
-    # if positive:
-    #     return -jnp.log(jnp.exp(similarity / temperature) / jnp.sum(jnp.exp(similarity / temperature)))
-
-    # # Negative pair (dissimilar instances)
-    # else:
-    #     return -jnp.log(1.0 - jnp.exp(similarity / temperature))
-
-    ## Make the above JAX-friendly
     return jax.lax.cond(positive[0], 
                         lambda xis: jnp.mean((xis[0]-xis[1])**2),
                         lambda xis: jnp.max(jnp.array([0., respulsive_dist-jnp.mean((xis[0]-xis[1])**2)])), 
                         operand=(xi_a, xi_b))
 
-# %%
-
-### ==== Vanilla Gradient Descent optimisation ==== ####
-
+## Gets the mean of the xi's for each environment
 @partial(jax.vmap, in_axes=(None, None, 0))
 def meanify_xis(es, xis, e):
     # return jnp.mean(xis[es==e], axis=0)
     return jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum()
 
+## Main loss function
 def loss_fn(params, static, batch):
     # print('\nCompiling function "loss_fn" ...\n')
     a, xi_a, Xa, b, xi_b, Xb, t_eval = batch
@@ -316,13 +310,14 @@ def loss_fn(params, static, batch):
     term1 = l2_norm(Xa, X_hat_a) + l2_norm(Xb, X_hat_b)
     term2 = jax.vmap(contrastive_loss, in_axes=(0, 0, 0, None))(xi_a, xi_b, a==b, 1.0).mean()
     # term2 = contrastive_loss(xi_a, xi_b, a==b, 1.0)
-    term3 = p_norm(params.neural_ode.hypernet.layers)
+    term3 = params_norm(params.neural_ode.hypernet.layers)
 
     es, xis = jnp.concatenate([a, b]), jnp.concatenate([xi_a, xi_b])
-    new_xis = meanify_xis(es, xis, jnp.arange(data.shape[0]))
+    new_xis = meanify_xis(es, xis, jnp.arange(nb_envs))
 
     # loss_val = term1 + term2
     loss_val = term1 + term2 + 1e-3*term3
+
     nb_steps = jnp.sum(nb_steps_a + nb_steps_b)
     return loss_val, (new_xis, nb_steps, term1, term2, term3)
 
@@ -339,146 +334,147 @@ def train_step(params, static, batch, opt_state):
     return params, opt_state, loss, aux_data
 
 
-# # @partial(jax.jit, static_argnums=())
-# def make_contrastive_batch(batch_id, xis, data, batch_size, cutoff_length):
-#     """ Make contrastive data from a batch of data """
-#     nb_envs = data.shape[0]
-#     nb_examples = data.shape[1]
-
-#     a = np.random.randint(0, int(nb_envs*1.3))           ## =========== TODO!!!!: increase the chances of a==b
-#     b = np.random.randint(0, int(nb_envs*1.3))
-
-#     if a>=nb_envs or b>=nb_envs:
-#         a = b = np.random.randint(0, nb_envs)
-
-#     xi_a = xis[a]
-#     xi_b = xis[b]
-
-#     batch_id = batch_id % (nb_examples//batch_size)
-#     start, finish = batch_id*batch_size, (batch_id+1)*batch_size
-
-#     Xa = data[a, start:finish, :cutoff_length, :]
-#     Xb = data[b, start:finish, :cutoff_length, :]
-
-#     return batch_id+1, (a, xi_a, Xa, b, xi_b, Xb, t_eval[:cutoff_length])
-
-
-
-@partial(jax.jit, static_argnums=(3,))
-def make_contrastive_batch(batch_id, xis, data, cutoff_length):
+# @partial(jax.jit, static_argnums=(3,))
+def make_contrastive_batch(xis, data, cutoff_length, nb_trajs_per_batch_per_env, key):      ## TODO: benchmark and save these btaches to disk
     """ Make contrastive data from a batch of data
-        Sample 2 trajectories per environment
+        Sample 2 trajectories to all the environments environment (same init condition)
         Constitute a set of n_env positive pairs (same environment)
         For the negative pairs, perform a combinatorial product of the environments """
-    nb_envs = data.shape[0]
-    nb_examples = data.shape[1]
 
-    traj1, traj2 = np.random.randint(0, nb_examples, size=(2))
+    def batch_from_2_trajs(key):
+        # new_key = get_new_key(key, num=1)
+        traj1, traj2 = jax.random.randint(key, (2,), 0, nb_trajs_per_env)
+        # traj1, traj2 = np.random.randint(0, nb_trajs_per_env, size=(2))
 
-    ## Get the positive pairs
-    batch_pos = []
-    for e in range(nb_envs):
-        a = e
-        b = e
-        xi_a = xis[a]
-        xi_b = xis[b]
-        Xa = data[a, traj1:traj1+1, :cutoff_length, :]
-        Xb = data[b, traj2:traj2+1, :cutoff_length, :]
-        batch_pos.append((a, xi_a, Xa, b, xi_b, Xb))
+        # jax.debug.print("Traj1: {} Traj2 {}", traj1, traj2 )
 
-    ## Get the negative pairs (get a and b from combinatorials)
-    batch_neg = []
-    for (a,b) in itertools.combinations(range(nb_envs), 2):
-        xi_a = xis[a]
-        xi_b = xis[b]
-        Xa = data[a, traj1:traj1+1, :cutoff_length, :]
-        Xb = data[b, traj2:traj2+1, :cutoff_length, :]
-        batch_neg.append((a, xi_a, Xa, b, xi_b, Xb))
+        ## Get the positive pairs
+        batch_pos = []
+        for e in range(nb_envs):
+            a = e
+            b = e
+            xi_a = xis[a]
+            xi_b = xis[b]
+            Xa = data[a, traj1:traj1+1, :cutoff_length, :]
+            Xb = data[b, traj2:traj2+1, :cutoff_length, :]
+            batch_pos.append((a, xi_a, Xa, b, xi_b, Xb))
 
-    batch = batch_pos + batch_neg
-    # batch = jnp.vstack(batch_pos + batch_neg)
-    ## Shuffle the batch
-    # print("Batch size:", list(np.random.permutation(len(batch))))
-    # batch = batch[list(np.random.permutation(len(batch)))]
-    random.shuffle(batch)
+        ## Get the negative pairs (get a and b from combinatorials)
+        batch_neg = []
+        for (a,b) in itertools.combinations(range(nb_envs), 2):
+            xi_a = xis[a]
+            xi_b = xis[b]
+            Xa = data[a, traj1:traj1+1, :cutoff_length, :]
+            Xb = data[b, traj2:traj2+1, :cutoff_length, :]
+            batch_neg.append((a, xi_a, Xa, b, xi_b, Xb))
+
+        return batch_pos+batch_neg
+
+    nb_repeats = nb_trajs_per_batch_per_env//2
+    multi_batch = []
+    for i in range(nb_repeats):
+        _, key = get_new_key(key, num=2)
+        multi_batch += batch_from_2_trajs(key)
+
+    random.shuffle(multi_batch)
 
     # as_, xi_as, Xas, bs, xi_bs, Xbs = zip(*batch)     
-    list_of_tuples = zip(*batch)        ## List of size 6, each element is a tuple of size batch_size
+    list_of_tuples = zip(*multi_batch)        ## List of size 6, each element is a tuple of size batch_size
     list_of_arrays = map(lambda arr: jnp.vstack(arr), list_of_tuples)
 
-    # [print("Shape of array:", arr.shape) for arr in list_of_arrays]
-
-    # jax.debug.breakpoint()
-
-    return batch_id+1, list_of_arrays+[t_eval[:cutoff_length]]
-
-## A vectorised version of the above
-# def make_contrastive_batch(batch_id, xis, data, cutoff_length, batch_size):
+    return list_of_arrays+[t_eval[:cutoff_length]]
 
 
-total_steps = nb_epochs
+# %%
 
-# sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
-# sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
-sched = optax.piecewise_constant_schedule(init_value=init_lr,
-                boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                        int(total_steps*0.5):0.1,
-                                        int(total_steps*0.75):0.5})
+### ==== Vanilla Gradient Descent optimisation ==== ####
 
-start_time = time.time()
+if train == True:
 
-print(f"\n\n=== Beginning Training ... ===")
+    nb_train_steps_per_epoch = nb_trajs_per_env//nb_trajs_per_batch_per_env
+    total_steps = nb_epochs * nb_train_steps_per_epoch
 
-opt = optax.adam(sched)
-opt_state = opt.init(params)
+    # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+    # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
+    sched = optax.piecewise_constant_schedule(init_value=init_lr,
+                    boundaries_and_scales={int(total_steps*0.25):0.5, 
+                                            int(total_steps*0.5):0.1,
+                                            int(total_steps*0.75):0.5})
 
-xis = np.random.normal(size=(data.shape[0], 2))
-init_xis = xis.copy()
+    start_time = time.time()
 
-losses = []
-nb_steps = []
-aeqb_sum = 0
-for epoch in range(nb_epochs):
+    print(f"\n\n=== Beginning Training ... ===")
+    print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
+    print(f"    Actual size of a batch (number of contrastive examples): {batch_size}")
+    print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
+    print(f"    Number of epochs: {nb_epochs}")
+    print(f"    Total number of training steps: {total_steps}")
 
-    nb_batches = 0
-    loss_sum = jnp.zeros(4)
-    nb_steps_eph = 0
-    batch_id = 0
-    # aeqb = 0
-    for i in range(data.shape[1]//batch_size):
-        # _, batch = make_contrastive_batch(i, xis, data, batch_size, cutoff_length)
-        _, batch = make_contrastive_batch(i, xis, data, cutoff_length)
-    
-        params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
+    opt = optax.adam(sched)
+    opt_state = opt.init(params)
 
-        a, _, _, b, _, _, _ = batch
-        # xis[a], xis[b] = xi_a, xi_b
-        # if a==b: aeqb += 1
+    # xis = np.random.normal(size=(nb_envs, 2))
+    context_key, batch_key = get_new_key(training_key, num=2)
+    xis = jax.random.normal(context_key, (nb_envs, 2))
+    init_xis = xis.copy()
 
-        loss_sum += jnp.array([loss, term1, term2, term3])
-        nb_steps_eph += nb_steps_val
-        nb_batches += 1
+    losses = []
+    nb_steps = []
+    aeqb_sum = 0
+    for epoch in range(nb_epochs):
 
-    # print(f"We got a={a}, and b={b}")
-    # print(f"\nPercentage of a==b: {(aeqb/nb_batches)*100:.2f}%\n")
-    # aeqb_sum += (aeqb/nb_batches)*100
+        nb_batches = 0
+        loss_sum = jnp.zeros(4)
+        nb_steps_eph = 0
+        batch_id = 0
 
-    loss_epoch = loss_sum/nb_batches
-    losses.append(loss_epoch)
-    nb_steps.append(nb_steps_eph)
+        _, batch_key = get_new_key(batch_key, num=2)
+        batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
 
-    if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-        print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Contrast: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
-        # print(f"\nPercentage of a==b: {np.mean((a==b).astype(int))*100:.2f}%\n")
+        for i in range(nb_train_steps_per_epoch):   ## Only two trajectories are used for each train_step
+            batch = make_contrastive_batch(xis, data, cutoff_length, nb_trajs_per_batch_per_env, batch_keys[i])
+        
+            params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
 
-# print(f"\nAverage Percentage of a==b: {aeqb_sum/nb_epochs:.2f}%\n")
+            # a, _, _, b, _, _, _ = batch
 
-losses = jnp.vstack(losses)
-nb_steps = jnp.array(nb_steps)
+            loss_sum += jnp.array([loss, term1, term2, term3])
+            nb_steps_eph += nb_steps_val
+            nb_batches += 1
 
-wall_time = time.time() - start_time
-time_in_hmsecs = seconds_to_hours(wall_time)
-print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+        loss_epoch = loss_sum/nb_batches
+        losses.append(loss_epoch)
+        nb_steps.append(nb_steps_eph)
+
+        if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
+            print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Contrast: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
+            # print(f"\nPercentage of a==b: {np.mean((a==b).astype(int))*100:.2f}%\n")
+
+    losses = jnp.vstack(losses)
+    nb_steps = jnp.array(nb_steps)
+
+    wall_time = time.time() - start_time
+    time_in_hmsecs = seconds_to_hours(wall_time)
+    print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+
+    ## Save the results
+    np.save("data/losses_09.npy", losses)
+    np.save("data/nb_steps_09.npy", nb_steps)
+    np.save("data/xis_09.npy", xis)
+    np.save("data/init_xis_09.npy", init_xis)
+
+    model = eqx.combine(params, static)
+    eqx.tree_serialise_leaves("data/model_09.eqx", model)
+
+else:
+    losses = np.load("data/losses_09.npy")
+    nb_steps = np.load("data/nb_steps_09.npy")
+    xis = np.load("data/xis_09.npy")
+    init_xis = np.load("data/init_xis_09.npy")
+
+    model = eqx.combine(params, static)
+    model = eqx.tree_deserialise_leaves("data/model_09.eqx", model)
+
 
 # %%
 
@@ -490,14 +486,19 @@ def test_model(params, static, batch):
 
     return X_hat, _
 
-nb_envs = data.shape[0]
-e = np.random.randint(0, nb_envs)
+
+# e_key, traj_key = get_new_key(testing_key, num=2)
+e_key, traj_key = get_new_key(time.time_ns(), num=2)
+
+e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
+# e = np.random.randint(0, nb_envs)
 # e = 0
-traj = np.random.randint(0, data.shape[1])
+traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
+# traj = np.random.randint(0, nb_trajs_per_env)
 # traj = 100
 
 # test_length = cutoff_length
-test_length = data.shape[2]
+test_length = nb_steps_per_traj
 t_test = t_eval[:test_length]
 X = data[e, traj, :test_length, :]
 
@@ -522,7 +523,6 @@ ax['B'].set_ylabel("Predators")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
-# ax['C'].plot(losses, label=["Total", "Traj", "Contrast", "Params"])
 mke = np.ceil(losses.shape[0]/100).astype(int)
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
 ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=3, label="Traj", color="grey", linewidth=1, alpha=0.5)
@@ -557,20 +557,13 @@ ax['F'].set_title(r'Final Contexts')
 # ax['F'].set_xlim(xmin, xmax)
 # ax['F'].set_ylim(ymin, ymax)
 
-plt.suptitle(f"Results for traj=0, in env={e}", fontsize=14)
+plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
 plt.savefig("data/contrast_node.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 
-
-#%% 
-
-model = eqx.combine(params, static)
-
-eqx.tree_serialise_leaves("data/model_09.eqx", model)
-# model = eqx.tree_deserialise_leaves("data/model_09.eqx", model)
 
 # %% [markdown]
 
