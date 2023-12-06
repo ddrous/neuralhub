@@ -49,7 +49,7 @@ from typing import List, Tuple, Callable
 
 #%%
 
-SEED = 21
+SEED = 22
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
@@ -63,11 +63,11 @@ decay_rate = 0.1
 
 ## Training hps
 print_every = 10
-nb_epochs = 3
+nb_epochs = 150
 # batch_size = 2*20              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
 nb_trajs_per_batch_per_env = 2*10              ## Two trajectories per environment are picked for each train_step; this results in 45 contrastive pairs (9 pos, 36 negs). This process is repeated once. 
 
-cutoff = 0.05
+cutoff = 0.1
 
 respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts)
 
@@ -88,7 +88,7 @@ train = True
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_big.npz')
+dataset = np.load('./data/lotka_volterra_small.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 nb_envs = data.shape[0]
@@ -160,7 +160,8 @@ class Physics(eqx.Module):
     params: jnp.ndarray
 
     def __init__(self, key=None):
-        self.params = jnp.abs(jax.random.normal(key, (4,)))
+        # self.params = jnp.abs(jax.random.normal(key, (4,)))
+        self.params = jax.random.uniform(key, (4,), minval=0., maxval=3.5)
 
     def __call__(self, t, x):
         dx0 = x[0]*self.params[0] - x[0]*x[1]*self.params[1]
@@ -193,8 +194,8 @@ class Processor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        return self.physics(t, x) + self.augmentation(t, x)
-        # return self.augmentation(t, x)
+        # return self.physics(t, x) + self.augmentation(t, x)
+        return self.augmentation(t, x)
 
 
 class NeuralODE(eqx.Module):
@@ -216,7 +217,7 @@ class NeuralODE(eqx.Module):
                     y0=x0,
                     stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
                     saveat=diffrax.SaveAt(ts=t_eval),
-                    max_steps=4096*1,
+                    max_steps=4096*10,
                 )
         
         return solution.ys, solution.stats["num_steps"]
@@ -568,7 +569,7 @@ plt.show()
 # %% [markdown]
 
 # # Preliminary results
-
+# - the final contexts are aligned only when the initial conditions are shared accros environments
 
 # # Conclusion
 

@@ -60,7 +60,7 @@ environments = [
 ]
 
 
-n_traj_per_env = 128*10
+n_traj_per_env = 128*1
 # n_traj_per_env = 1
 n_steps_per_traj = 501
 
@@ -128,7 +128,7 @@ ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=5, repeat=Fal
 plt.show()
 
 # Save t_eval and the solution to a npz file
-np.savez('data/lotka_volterra_big.npz', t=solution.t, X=data)
+np.savez('data/lotka_volterra_small.npz', t=solution.t, X=data)
 
 
 
