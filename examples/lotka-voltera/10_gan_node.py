@@ -6,6 +6,7 @@
 # - Use a time series as input to the discriminators, rather than a single point
 # - Initialise the discriminators on their own trajectories in advance, before training as a whole
 # - Put (concatenate) the context back in before each layer of the generator (neural ODE)
+# - Implement a cross-entropy loss for the discriminators probas
 
 ### Summary
 
@@ -21,7 +22,7 @@ import jax
 
 print("\n############# Lotka-Volterra with Generators and Discriminators #############\n")
 print("Jax version:", jax.__version__)
-print("Available devices", jax.devices())
+print("Available devices:", jax.devices())
 
 import jax.numpy as jnp
 # import jax.scipy as jsp
@@ -54,16 +55,16 @@ SEED = 23
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 3e-4
+init_lr = 3e-3
 
 ## Training hps
-print_every = 10
-nb_epochs = 100
-batch_size = 9*1       ## 9 is the number of environments
+print_every = 100
+nb_epochs = 1800
+batch_size = 9*128*10       ## 9 is the number of environments
 
 cutoff = 0.1
 
-train = True
+train = False
 
 #%%
 
@@ -80,7 +81,7 @@ train = True
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_small.npz')
+dataset = np.load('./data/lotka_volterra_big.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 nb_envs = data.shape[0]
@@ -133,8 +134,8 @@ class SharedProcessor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        # return self.physics(t, x) + self.augmentation(t, x)
-        return self.augmentation(t, x)
+        return self.physics(t, x) + self.augmentation(t, x)
+        # return self.augmentation(t, x)
         # return self.physics(t, x)
 
 class EnvProcessor(eqx.Module):
@@ -321,8 +322,8 @@ def loss_fn(params, static, batch):
     term2 = jnp.mean((es_hat - e)**2, dtype=jnp.float32)
     term3 = params_norm(params.generator.processor.env)
 
-    loss_val = term1 + term2
-    # loss_val = term1 + term2 + 1e-3*term3
+    loss_val = term1 + 1e-2*term2
+    # loss_val = term1 + 1e-2*term2 + 1e-3*term3
 
     return loss_val, (new_xis, nb_steps, term1, term2, term3)
 
@@ -366,6 +367,7 @@ if train == True:
 
     nb_trajs_per_batch_per_env = batch_size//nb_envs
     nb_train_steps_per_epoch = nb_trajs_per_env//nb_trajs_per_batch_per_env
+    assert nb_train_steps_per_epoch > 0, "Batch size is too large"
     total_steps = nb_epochs * nb_train_steps_per_epoch
 
     # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
@@ -377,7 +379,7 @@ if train == True:
 
     start_time = time.time()
 
-    print(f"\n\n=== Beginning Training ... ===")
+    print(f"\n\n=== Beginning training ... ===")
     print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
     print(f"    Actual size of a batch (number of contrastive examples): {batch_size}")
     print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
@@ -437,6 +439,8 @@ if train == True:
     eqx.tree_serialise_leaves("data/model_10.eqx", model)
 
 else:
+    print("\nNo training, loading model and results from 'data' folder ...\n")
+
     losses = np.load("data/losses_10.npy")
     nb_steps = np.load("data/nb_steps_10.npy")
     xis = np.load("data/xis_10.npy")
@@ -465,12 +469,12 @@ e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 # traj = 100
 
-test_length = cutoff_length
-# test_length = nb_steps_per_traj
+# test_length = cutoff_length
+test_length = nb_steps_per_traj
 t_test = t_eval[:test_length]
 X = data[e, traj, :test_length, :]
 
-print("== Testing begining ==")
+print("==  Begining testing ... ==")
 print("    Environment id:", e)
 print("    Trajectory id:", traj)
 print("    Length of the original trajectories:", nb_steps_per_traj)
@@ -482,13 +486,17 @@ X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_test))
 
 fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 
+mke = np.ceil(losses.shape[0]/100).astype(int)
+mks = 3
+
 ax['A'].plot(t_test, X[:, 0], c="dodgerblue", label="Preys (GT)")
-ax['A'].plot(t_test, X_hat[:, 0], ".", c="navy", label="Preys (NODE)")
+ax['A'].plot(t_test, X_hat[:, 0], ".", c="royalblue", label="Preys (NODE)", markersize=mks)
 
 ax['A'].plot(t_test, X[:, 1], c="violet", label="Predators (GT)")
-ax['A'].plot(t_test, X_hat[:, 1], ".", c="purple", label="Predators (NODE)")
+ax['A'].plot(t_test, X_hat[:, 1], ".", c="purple", label="Predators (NODE)", markersize=mks)
 
 ax['A'].set_xlabel("Time")
+ax['A'].set_ylabel("Counts")
 ax['A'].set_title("Trajectories")
 ax['A'].legend()
 
@@ -499,10 +507,9 @@ ax['B'].set_ylabel("Predators")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
-mke = np.ceil(losses.shape[0]/100).astype(int)
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
-ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=3, label="Traj", color="grey", linewidth=1, alpha=0.5)
-ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=3, label="Discrim", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=mks, label="Traj", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=mks, label="Discrim", color="grey", linewidth=1, alpha=0.5)
 # ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
@@ -539,6 +546,7 @@ plt.tight_layout()
 plt.savefig("data/gan_node.png", dpi=300, bbox_inches='tight')
 plt.show()
 
+print("Testing finished. Results saved in 'data' folder.\n")
 
 
 # %% [markdown]
