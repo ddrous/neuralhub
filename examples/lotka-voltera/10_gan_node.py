@@ -36,7 +36,7 @@ import diffrax
 import matplotlib.pyplot as plt
 
 from graphpint.utils import *
-# from graphpint.integrators import *
+from graphpint.integrators import *
 
 import optax
 from functools import partial
@@ -46,26 +46,21 @@ import time
 
 #%%
 
-SEED = 22
+SEED = 23
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
-# integrator = rk4_integrator
-# integrator = dopri_integrator
-# integrator = dopri_integrator_diff
+integrator = rk4_integrator
 
 ## Optimiser hps
 init_lr = 3e-4
-decay_rate = 0.1
 
 ## Training hps
 print_every = 10
-nb_epochs = 1
-batch_size = 9*16       ## 9 is the number of environments
+nb_epochs = 100
+batch_size = 9*1       ## 9 is the number of environments
 
 cutoff = 0.1
-
-respulsive_dist = .5       ## For the contrastive loss (appplied to the contexts)
 
 train = True
 
@@ -84,7 +79,7 @@ train = True
 # solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
 # # data = solution.y.T[None, None, ...]
 
-dataset = np.load('./data/lotka_volterra_big.npz')
+dataset = np.load('./data/lotka_volterra_small.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 nb_envs = data.shape[0]
@@ -138,8 +133,8 @@ class SharedProcessor(eqx.Module):
 
     def __call__(self, t, x):
         # return self.physics(t, x) + self.augmentation(t, x)
-        # return self.augmentation(t, x)
-        return self.physics(t, x)
+        return self.augmentation(t, x)
+        # return self.physics(t, x)
 
 class EnvProcessor(eqx.Module):
     layers: list
@@ -153,6 +148,9 @@ class EnvProcessor(eqx.Module):
     def __call__(self, t, x, context):
         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
         # y = x
+
+        # jax.debug.print("\n\n\n\n\n\nx shape {} context {}\n\n\n\n\n\n", x, context)
+        # jax.debug.breakpoint()
 
         y = jnp.concatenate([x, context], axis=0)
         for layer in self.layers:
@@ -184,7 +182,7 @@ class Generator(eqx.Module):
         solution = diffrax.diffeqsolve(
                     diffrax.ODETerm(self.processor),
                     diffrax.Tsit5(),
-                    args=(context,),
+                    args=context,
                     t0=t_eval[0],
                     t1=t_eval[-1],
                     dt0=t_eval[1] - t_eval[0],
@@ -193,8 +191,12 @@ class Generator(eqx.Module):
                     saveat=diffrax.SaveAt(ts=t_eval),
                     max_steps=4096*10,
                 )
-
         return solution.ys, solution.stats["num_steps"]
+
+        # rhs = lambda x, t: self.processor(t, x, context)
+        # X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
+        # return X_hat, t_eval.size
+
 
 
 
@@ -224,7 +226,7 @@ class Discriminator(eqx.Module):
 
         return proba, context
 
-@partial(eqx.filter_vmap, static_argnums=(0, 1))
+@eqx.filter_vmap(in_axes=(None, None, 0))
 def init_discriminator_ensemble(traj_size, context_size, key):
     return Discriminator(traj_size, context_size, key=key)
 
@@ -244,7 +246,7 @@ class GANNODE(eqx.Module):
         keys = get_new_key(key, num=1+nb_envs)
 
         self.generator = Generator(proc_data_size, proc_width_size, proc_depth, context_size, key=keys[1])
-        self.discriminators = init_discriminator_ensemble(traj_size*proc_data_size, context_size, key=keys[1:])
+        self.discriminators = init_discriminator_ensemble(traj_size*proc_data_size, context_size, keys[1:])
         self.traj_size = traj_size
 
     def __call__(self, x0, t_eval, xi):
@@ -279,10 +281,21 @@ def l2_norm(X, X_hat):
     # return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
     return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
 
+# ## Gets the mean of the xi's for each environment
+# @partial(jax.vmap, in_axes=(None, None, 0))
+# def meanify_xis(es, xis, e):
+#     jax.debug.breakpoint()
+#     return jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum()
+
+
 ## Gets the mean of the xi's for each environment
-@partial(jax.vmap, in_axes=(None, None, 0))
-def meanify_xis(es, xis, e):
-    return jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum()
+@partial(jax.vmap, in_axes=(0, None, None, None))
+def meanify_xis(e, es, xis, orig_xis):      ## TODO: some xi's get updated, others don't
+    return jax.lax.cond((e==es).sum()>0, 
+                        lambda e: jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum(), 
+                        lambda e: orig_xis[e], 
+                        e)
+
 
 ## Main loss function
 def loss_fn(params, static, batch):
@@ -296,12 +309,15 @@ def loss_fn(params, static, batch):
 
     probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
     es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis[jnp.arange(X.shape[0]), es_hat]
+    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
 
-    new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
+    # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
+    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
+
+    # print("New xis et al shape is:", new_xis.shape, xis_hat.shape, xis.shape, es_hat.shape, "\n")
 
     term1 = l2_norm(X, X_hat)
-    term2 = jnp.mean((es_hat - e)**2, axis=-1)
+    term2 = jnp.mean((es_hat - e)**2, dtype=jnp.float32)
     term3 = params_norm(params.generator.processor.env)
 
     loss_val = term1 + term2
@@ -335,10 +351,10 @@ def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):   
 
     for e in range(nb_envs):
         es_batch.append(jnp.ones(nb_trajs_per_batch_per_env, dtype=int)*e)
-        xis_batch.append(jnp.ones((nb_trajs_per_batch_per_env, 2))*xis[e])
+        xis_batch.append(jnp.ones((nb_trajs_per_batch_per_env, 2))*xis[e:e+1, :])
         X_batch.append(data[e, traj_start:traj_end, :cutoff_length, :])
 
-    return jnp.vstack(es_batch), jnp.vstack(xis_batch), jnp.vstack(X_batch), t_eval[:cutoff_length]
+    return jnp.concatenate(es_batch), jnp.vstack(xis_batch), jnp.vstack(X_batch), t_eval[:cutoff_length]
 
 
 # %%
@@ -401,8 +417,7 @@ if train == True:
         nb_steps.append(nb_steps_eph)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-            print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Contrast: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
-            # print(f"\nPercentage of a==b: {np.mean((a==b).astype(int))*100:.2f}%\n")
+            print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}     Traj: {loss_epoch[1]:-.8f}      Discrim: {loss_epoch[2]:-.8f}      Params: {loss_epoch[3]:-.5f}", flush=True)
 
     losses = jnp.vstack(losses)
     nb_steps = jnp.array(nb_steps)
@@ -486,7 +501,7 @@ ax['B'].legend()
 mke = np.ceil(losses.shape[0]/100).astype(int)
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
 ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=3, label="Traj", color="grey", linewidth=1, alpha=0.5)
-ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=3, label="Contrast", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=3, label="Discrim", color="grey", linewidth=1, alpha=0.5)
 # ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
