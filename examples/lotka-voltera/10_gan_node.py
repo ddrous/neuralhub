@@ -20,6 +20,7 @@ import jax
 # jax.config.update("jax_platform_name", "cpu")
 
 print("\n############# Lotka-Volterra with Generators and Discriminators #############\n")
+print("Jax version:", jax.__version__)
 print("Available devices", jax.devices())
 
 import jax.numpy as jnp
