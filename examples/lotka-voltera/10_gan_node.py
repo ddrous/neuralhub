@@ -7,6 +7,7 @@
 # - Initialise the discriminators on their own trajectories in advance, before training as a whole
 # - Put (concatenate) the context back in before each layer of the generator (neural ODE)
 # - Implement a cross-entropy loss for the discriminators probas
+# - Do I let the optimiser maintain its state from the calibration to the training phase ?
 
 ### Summary
 
@@ -20,7 +21,7 @@ import jax
 # jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
-print("\n############# Lotka-Volterra with Generators and Discriminators #############\n")
+print("\n############# Lotka-Volterra with Generator and Discriminators #############\n")
 print("Jax version:", jax.__version__)
 print("Available devices:", jax.devices())
 
@@ -48,7 +49,7 @@ import time
 
 #%%
 
-SEED = 23
+SEED = 24
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
@@ -59,12 +60,13 @@ init_lr = 3e-3
 
 ## Training hps
 print_every = 100
-nb_epochs = 1800
+nb_epochs_cal = 250
+nb_epochs = 5000
 batch_size = 9*128*10       ## 9 is the number of environments
 
 cutoff = 0.1
 
-train = False
+train = True
 
 #%%
 
@@ -134,8 +136,8 @@ class SharedProcessor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        return self.physics(t, x) + self.augmentation(t, x)
-        # return self.augmentation(t, x)
+        # return self.physics(t, x) + self.augmentation(t, x)
+        return self.augmentation(t, x)
         # return self.physics(t, x)
 
 class EnvProcessor(eqx.Module):
@@ -181,23 +183,23 @@ class Generator(eqx.Module):
 
     def __call__(self, x0, t_eval, context):
 
-        solution = diffrax.diffeqsolve(
-                    diffrax.ODETerm(self.processor),
-                    diffrax.Tsit5(),
-                    args=context,
-                    t0=t_eval[0],
-                    t1=t_eval[-1],
-                    dt0=t_eval[1] - t_eval[0],
-                    y0=x0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-                    saveat=diffrax.SaveAt(ts=t_eval),
-                    max_steps=4096*10,
-                )
-        return solution.ys, solution.stats["num_steps"]
+        # solution = diffrax.diffeqsolve(
+        #             diffrax.ODETerm(self.processor),
+        #             diffrax.Tsit5(),
+        #             args=context,
+        #             t0=t_eval[0],
+        #             t1=t_eval[-1],
+        #             dt0=t_eval[1] - t_eval[0],
+        #             y0=x0,
+        #             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+        #             saveat=diffrax.SaveAt(ts=t_eval),
+        #             max_steps=4096*10,
+        #         )
+        # return solution.ys, solution.stats["num_steps"]
 
-        # rhs = lambda x, t: self.processor(t, x, context)
-        # X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
-        # return X_hat, t_eval.size
+        rhs = lambda x, t: self.processor(t, x, context)
+        X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
+        return X_hat, t_eval.size
 
 
 
@@ -206,7 +208,7 @@ class Generator(eqx.Module):
 
 class Discriminator(eqx.Module):
     layers: list
-    proba_layers: eqx.nn.Linear
+    proba_layers: list
 
     def __init__(self, traj_size, context_size, key=None):        ## TODO make this convolutional
         # super().__init__(**kwargs)
@@ -299,47 +301,6 @@ def meanify_xis(e, es, xis, orig_xis):      ## TODO: some xi's get updated, othe
                         e)
 
 
-## Main loss function
-def loss_fn(params, static, batch):
-    # print('\nCompiling function "loss_fn" ...\n')
-    e, xi, X, t_eval = batch
-    print("Shapes of elements in a batch:", e.shape, xi.shape, X.shape, t_eval.shape, "\n")
-
-    model = eqx.combine(params, static)
-
-    X_hat, nb_steps, probas, xis = jax.vmap(model, in_axes=(0, None, 0))(X[:, 0, :], t_eval, xi)
-
-    probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
-    es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
-
-    # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
-    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
-
-    # print("New xis et al shape is:", new_xis.shape, xis_hat.shape, xis.shape, es_hat.shape, "\n")
-
-    term1 = l2_norm(X, X_hat)
-    term2 = jnp.mean((es_hat - e)**2, dtype=jnp.float32)
-    term3 = params_norm(params.generator.processor.env)
-
-    loss_val = term1 + 1e-2*term2
-    # loss_val = term1 + 1e-2*term2 + 1e-3*term3
-
-    return loss_val, (new_xis, nb_steps, term1, term2, term3)
-
-
-@partial(jax.jit, static_argnums=(1))
-def train_step(params, static, batch, opt_state):
-    print('\nCompiling function "train_step" ...\n')
-
-    (loss, aux_data), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
-
-    updates, opt_state = opt.update(grads, opt_state)
-    params = optax.apply_updates(params, updates)
-
-    return params, opt_state, loss, aux_data
-
-
 # @partial(jax.jit, static_argnums=(2,3))
 def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):      ## TODO: benchmark and save these btaches to disk
     """ Make a batch """
@@ -359,35 +320,74 @@ def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):   
     return jnp.concatenate(es_batch), jnp.vstack(xis_batch), jnp.vstack(X_batch), t_eval[:cutoff_length]
 
 
+
+
 # %%
 
-### ==== Vanilla Gradient Descent optimisation ==== ####
+### ==== Calibration of the discriminators with real trajectories ==== ####
+
+
+## Main loss function
+def loss_fn_cal(params, static, batch):
+    # print('\nCompiling function "loss_fn" ...\n')
+    e, xi, X, t_eval = batch
+    print("Shapes of elements in a batch:", e.shape, xi.shape, X.shape, t_eval.shape, "\n")
+
+    model = eqx.combine(params, static)
+
+    X_input = jnp.reshape(jnp.transpose(X[:, :cutoff_length, :], axes=(0,2,1)), (X.shape[0], -1))
+    # print("Shape of X_input:", X_input.shape)
+    # probas, xis = jax.vmap(model.discriminators, in_axes=(0))(X_input)
+    probas, xis = jax.vmap(evaluate_discriminator_ensemble, in_axes=(None, 0))(model.discriminators, X_input)
+
+    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas.squeeze(), e))
+
+    es_hat = jnp.argmax(probas, axis=1)
+    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
+    # error_es = jnp.mean((es_hat - e)**2)
+    error_es = jnp.mean(jnp.abs(es_hat - e))
+
+    # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
+    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
+
+    # loss_val = error_es
+    loss_val = cross_ent
+
+    return loss_val, (new_xis)
+
+
+@partial(jax.jit, static_argnums=(1))
+def train_step_cal(params, static, batch, opt_state):
+    print('\nCompiling function "train_step" ...\n')
+
+    (loss, aux_data), grads  = jax.value_and_grad(loss_fn_cal, has_aux=True)(params, static, batch)
+
+    updates, opt_state = opt.update(grads, opt_state)
+    params = optax.apply_updates(params, updates)
+
+    return params, opt_state, loss, aux_data
+
 
 if train == True:
 
     nb_trajs_per_batch_per_env = batch_size//nb_envs
     nb_train_steps_per_epoch = nb_trajs_per_env//nb_trajs_per_batch_per_env
     assert nb_train_steps_per_epoch > 0, "Batch size is too large"
-    total_steps = nb_epochs * nb_train_steps_per_epoch
 
-    # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
-    # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
-    sched = optax.piecewise_constant_schedule(init_value=init_lr,
-                    boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                            int(total_steps*0.5):0.1,
-                                            int(total_steps*0.75):0.5})
+    total_steps_cal = nb_epochs_cal * nb_train_steps_per_epoch
 
-    start_time = time.time()
-
-    print(f"\n\n=== Beginning training ... ===")
-    print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
-    print(f"    Actual size of a batch (number of contrastive examples): {batch_size}")
-    print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
-    print(f"    Number of epochs: {nb_epochs}")
-    print(f"    Total number of training steps: {total_steps}")
-
+    sched = optax.exponential_decay(init_lr, total_steps_cal, 0.9)
     opt = optax.adam(sched)
     opt_state = opt.init(params)
+
+    print(f"\n\n=== Beginning calibration of the discriminators ... ===")
+    print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
+    print(f"    Actual size of a batch (number of examples for all envs): {batch_size}")
+    print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
+    print(f"    Number of calibration epochs: {nb_epochs_cal}")
+    print(f"    Total number of calibration steps: {total_steps_cal}")
+
+    start_time = time.time()
 
     # xis = np.random.normal(size=(nb_envs, 2))
     context_key, batch_key = get_new_key(training_key, num=2)
@@ -395,8 +395,139 @@ if train == True:
     init_xis = xis.copy()
 
     losses = []
+    for epoch in range(nb_epochs_cal):
+
+        nb_batches = 0
+        loss_sum = 0
+
+        _, batch_key = get_new_key(batch_key, num=2)
+        batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
+
+        for i in range(nb_train_steps_per_epoch):   ## Only two trajectories are used for each train_step
+            batch = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_keys[i])
+        
+            params, opt_state, loss, (xis) = train_step_cal(params, static, batch, opt_state)
+
+            loss_sum += loss
+            nb_batches += 1
+
+        loss_epoch = loss_sum/nb_batches
+        losses.append(loss_epoch)
+
+        if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs_cal-1:
+            print(f"    Epoch: {epoch:-5d}      CalibLoss: {loss_epoch:-.8f}", flush=True)
+
+    losses = jnp.vstack(losses)
+
+    wall_time = time.time() - start_time
+    time_in_hmsecs = seconds_to_hours(wall_time)
+    print("\nCalibration step training time: %d hours %d mins %d secs" %time_in_hmsecs)
+
+else:
+    print("\nNo training, skipping calibration step ...\n")
+
+
+fig, ax = plt.subplot_mosaic('A', figsize=(6*2, 3.5*1))
+
+ax['A'].plot(losses[:], label="Total", color="brown", linewidth=3, alpha=1.0)
+ax['A'].set_xlabel("Epochs")
+ax['A'].set_title("Calibration Loss")
+ax['A'].set_yscale('log')
+ax['A'].legend()
+
+plt.tight_layout()
+plt.savefig("data/gan_node_calibration.png", dpi=300, bbox_inches='tight')
+plt.show()
+
+
+# %%
+
+### ==== Step 2: training both generator and discriminators at once ==== ####
+
+
+## Main loss function
+def loss_fn(params, static, batch):
+    # print('\nCompiling function "loss_fn" ...\n')
+    e, xi, X, t_eval = batch
+    print("Shapes of elements in a batch:", e.shape, xi.shape, X.shape, t_eval.shape, "\n")
+
+    model = eqx.combine(params, static)
+
+    X_hat, nb_steps, probas, xis = jax.vmap(model, in_axes=(0, None, 0))(X[:, 0, :], t_eval, xi)
+
+    probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
+    # jax.debug.print("IMPORTANT. Probas shape is: {} {} {}\n", probas.shape, probas_hat.shape, e.shape)
+    # print("IMPORTANT. Probas shape is: \n", probas.shape, probas_hat.shape, e.shape)
+    # jax.debug.breakpoint()
+    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas.squeeze(), e))
+
+    es_hat = jnp.argmax(probas, axis=1)
+    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
+    # error_es = jnp.mean((es_hat - e)**2)
+    error_es = jnp.mean(jnp.abs(es_hat - e))
+
+    # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
+    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
+
+    # print("New xis et al shape is:", new_xis.shape, xis_hat.shape, xis.shape, es_hat.shape, "\n")
+
+    term1 = l2_norm(X, X_hat)
+    # term2 = error_es
+    # term2 = error_es+cross_ent
+    term2 = cross_ent
+    term3 = params_norm(params.generator.processor.env)
+
+    loss_val = term1 + 1e-2*term2
+    # loss_val = term1 + 1e-2*term2 + 1e-3*term3
+    # loss_val = term2
+
+    return loss_val, (new_xis, jnp.sum(nb_steps), term1, term2, term3)
+
+
+@partial(jax.jit, static_argnums=(1))
+def train_step(params, static, batch, opt_state):
+    print('\nCompiling function "train_step" ...\n')
+
+    (loss, aux_data), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
+
+    updates, opt_state = opt.update(grads, opt_state)
+    params = optax.apply_updates(params, updates)
+
+    return params, opt_state, loss, aux_data
+
+
+
+if train == True:
+
+    assert nb_train_steps_per_epoch > 0, "Batch size is too large"
+    total_steps = nb_epochs * nb_train_steps_per_epoch
+
+    # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+    # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
+    sched = optax.piecewise_constant_schedule(init_value=init_lr,
+                    boundaries_and_scales={int(total_steps*0.25):0.2, 
+                                            int(total_steps*0.5):0.2,
+                                            int(total_steps*0.75):0.2})
+    opt = optax.adam(sched)
+    opt_state = opt.init(params)
+
+
+    print(f"\n\n=== Beginning training (of both generators and discriminators)... ===")
+    print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
+    print(f"    Actual size of a batch (number of examples for all envs): {batch_size}")
+    print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
+    print(f"    Number of training epochs: {nb_epochs}")
+    print(f"    Total number of training steps: {total_steps}")
+
+
+    start_time = time.time()
+
+    # context_key, batch_key = get_new_key(training_key, num=2)
+    # xis = jax.random.normal(context_key, (nb_envs, 2))
+    # init_xis = xis.copy()
+
+    losses = []
     nb_steps = []
-    aeqb_sum = 0
     for epoch in range(nb_epochs):
 
         nb_batches = 0
@@ -450,6 +581,7 @@ else:
     model = eqx.tree_deserialise_leaves("data/model_10.eqx", model)
 
 
+
 # %%
 
 def test_model(params, static, batch):
@@ -486,14 +618,14 @@ X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_test))
 
 fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 
-mke = np.ceil(losses.shape[0]/100).astype(int)
-mks = 3
+# mke = np.ceil(losses.shape[0]/100).astype(int)
+mks = 2
 
-ax['A'].plot(t_test, X[:, 0], c="dodgerblue", label="Preys (GT)")
-ax['A'].plot(t_test, X_hat[:, 0], ".", c="royalblue", label="Preys (NODE)", markersize=mks)
+ax['A'].plot(t_test, X[:, 0], c="deepskyblue", label="Preys (GT)")
+ax['A'].plot(t_test, X_hat[:, 0], "o", c="royalblue", label="Preys (NODE)", markersize=mks)
 
 ax['A'].plot(t_test, X[:, 1], c="violet", label="Predators (GT)")
-ax['A'].plot(t_test, X_hat[:, 1], ".", c="purple", label="Predators (NODE)", markersize=mks)
+ax['A'].plot(t_test, X_hat[:, 1], "x", c="purple", label="Predators (NODE)", markersize=mks)
 
 ax['A'].set_xlabel("Time")
 ax['A'].set_ylabel("Counts")
@@ -507,10 +639,12 @@ ax['B'].set_ylabel("Predators")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
+mke = np.ceil(losses.shape[0]/100).astype(int)
+
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
 ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=mks, label="Traj", color="grey", linewidth=1, alpha=0.5)
 ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=mks, label="Discrim", color="grey", linewidth=1, alpha=0.5)
-# ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
 ax['C'].set_yscale('log')
@@ -552,8 +686,9 @@ print("Testing finished. Results saved in 'data' folder.\n")
 # %% [markdown]
 
 # # Preliminary results
-# - please Lord !
+# 
 
 # # Conclusion
 
 # %%
+
