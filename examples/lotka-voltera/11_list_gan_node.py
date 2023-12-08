@@ -230,33 +230,32 @@ class Discriminator(eqx.Module):
 
         return proba, context
 
-@eqx.filter_vmap(in_axes=(None, None, 0))
-def init_discriminator_ensemble(traj_size, context_size, key):
-    return Discriminator(traj_size, context_size, key=key)
-
-@eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
-def evaluate_discriminator_ensemble(discriminator, traj):
-    return discriminator(traj)
-
-
-
 
 class GANNODE(eqx.Module):
     generator: Generator
-    discriminators: Discriminator       ## TODO, rather, an ensemble of discriminators. A list might be better ?
+    discriminators: list       ## TODO, rather, an ensemble of discriminators. A list might be better ?
     traj_size: int              ## Based on the above, this shouldn't be needed. TODO: use a time series instead
 
     def __init__(self, proc_data_size, proc_width_size, proc_depth, context_size, traj_size, nb_envs, key=None):
         keys = get_new_key(key, num=1+nb_envs)
 
-        self.generator = Generator(proc_data_size, proc_width_size, proc_depth, context_size, key=keys[1])
-        self.discriminators = init_discriminator_ensemble(traj_size*proc_data_size, context_size, keys[1:])
+        self.generator = Generator(proc_data_size, proc_width_size, proc_depth, context_size, key=keys[1])        
+        self.discriminators = [Discriminator(traj_size*proc_data_size, context_size, key=key) for key in keys[1:]]
+        
         self.traj_size = traj_size
 
     def __call__(self, x0, t_eval, xi):
+
         traj, nb_steps = self.generator(x0, t_eval, xi)
-        probas, contexts = evaluate_discriminator_ensemble(self.discriminators, traj[:self.traj_size, :].ravel())
-        return traj, nb_steps, probas, contexts         ## TODO: even tho all contexts are returned, only the corresponding ones should be used for the loss
+
+        probas = []
+        contexts = []
+        for discriminator in self.discriminators:
+            proba, context = discriminator(traj[:self.traj_size, :].ravel())
+            probas.append(proba)
+            contexts.append(context)
+
+        return traj, nb_steps, jnp.concatenate(probas), jnp.vstack(contexts)         ## TODO: even tho all contexts are returned, only the corresponding ones should be used for the loss
 
 
 # %%
@@ -285,19 +284,14 @@ def l2_norm(X, X_hat):
     # return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
     return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
 
-# ## Gets the mean of the xi's for each environment
-# @partial(jax.vmap, in_axes=(None, None, 0))
-# def meanify_xis(es, xis, e):
-#     jax.debug.breakpoint()
-#     return jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum()
-
 
 ## Gets the mean of the xi's for each environment
-@partial(jax.vmap, in_axes=(0, None, None, None))
-def meanify_xis(e, es, xis, orig_xis):      ## TODO: some xi's get updated, others don't
-    return jax.lax.cond((e==es).sum()>0, 
-                        lambda e: jnp.where(es==e, xis, 0.0).sum(axis=0) / (es==e).sum(),       ## TODO (es==e)[:,None] ?
-                        lambda e: orig_xis[e], 
+@partial(jax.vmap, in_axes=(0, None, None, None, None))
+def meanify_xis(e, es_hat, xis_hat, es_orig, xis_orig):      ## TODO: some xi's get updated, others don't
+    print("All shapes before meaninfying:", es_hat.shape, es_orig.shape, xis_hat.shape, xis_orig.shape, "\n")
+    return jax.lax.cond((es_hat==e).sum()>0, 
+                        lambda e: jnp.where((es_hat==e), xis_hat, 0.0).sum(axis=0) / (es_hat==e).sum(), 
+                        lambda e: jnp.where((es_orig==e), xis_orig, 0.0).sum(axis=0) / (es_orig==e).sum(),      ## TODO, always make sure the batch is representative of all environments
                         e)
 
 
@@ -313,7 +307,7 @@ def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):   
     X_batch = []
 
     for e in range(nb_envs):
-        es_batch.append(jnp.ones(nb_trajs_per_batch_per_env, dtype=int)*e)
+        es_batch.append(jnp.ones((nb_trajs_per_batch_per_env,), dtype=int)*e)
         xis_batch.append(jnp.ones((nb_trajs_per_batch_per_env, 2))*xis[e:e+1, :])
         X_batch.append(data[e, traj_start:traj_end, :cutoff_length, :])
 
@@ -330,25 +324,31 @@ def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):   
 ## Main loss function
 def loss_fn_cal(params, static, batch):
     # print('\nCompiling function "loss_fn" ...\n')
-    e, xi, X, t_eval = batch
-    print("Shapes of elements in a batch:", e.shape, xi.shape, X.shape, t_eval.shape, "\n")
+    es, xis, Xs, t_eval = batch
+    print("Shapes of elements in a batch:", es.shape, xis.shape, Xs.shape, t_eval.shape, "\n")
 
     model = eqx.combine(params, static)
 
-    X_input = jnp.reshape(jnp.transpose(X[:, :cutoff_length, :], axes=(0,2,1)), (X.shape[0], -1))
-    # print("Shape of X_input:", X_input.shape)
-    # probas, xis = jax.vmap(model.discriminators, in_axes=(0))(X_input)
-    probas, xis = jax.vmap(evaluate_discriminator_ensemble, in_axes=(None, 0))(model.discriminators, X_input)
+    X_input = jnp.reshape(jnp.transpose(Xs[:, :cutoff_length, :], axes=(0,2,1)), (Xs.shape[0], -1))
 
-    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas.squeeze(), e))
+    probas = []
+    contexts = []
+    for discriminator in model.discriminators:
+        proba, context = jax.vmap(discriminator)(X_input)
+        probas.append(proba)
+        contexts.append(context[:, None, :])
+
+    probas, xis_hat = jnp.concatenate(probas, axis=1), jnp.concatenate(contexts, axis=1)
+
+    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas, es))
 
     es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
+    xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
     # error_es = jnp.mean((es_hat - e)**2)
-    error_es = jnp.mean(jnp.abs(es_hat - e))
+    error_es = jnp.mean(jnp.abs(es_hat - es))
 
     # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
-    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
+    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
 
     # loss_val = error_es
     loss_val = cross_ent
@@ -436,7 +436,7 @@ ax['A'].set_yscale('log')
 ax['A'].legend()
 
 plt.tight_layout()
-plt.savefig("data/gan_node_calibration.png", dpi=300, bbox_inches='tight')
+plt.savefig("data/list_gan_node_calibration.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 
@@ -448,30 +448,27 @@ plt.show()
 ## Main loss function
 def loss_fn(params, static, batch):
     # print('\nCompiling function "loss_fn" ...\n')
-    e, xi, X, t_eval = batch
-    print("Shapes of elements in a batch:", e.shape, xi.shape, X.shape, t_eval.shape, "\n")
+    es, xis, Xs, t_eval = batch
+    print("Shapes of elements in a batch:", es.shape, xis.shape, Xs.shape, t_eval.shape, "\n")
 
     model = eqx.combine(params, static)
 
-    X_hat, nb_steps, probas, xis = jax.vmap(model, in_axes=(0, None, 0))(X[:, 0, :], t_eval, xi)
+    Xs_hat, nb_steps, probas, xis_hat = jax.vmap(model, in_axes=(0, None, 0))(Xs[:, 0, :], t_eval, xis)
 
     probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
-    # jax.debug.print("IMPORTANT. Probas shape is: {} {} {}\n", probas.shape, probas_hat.shape, e.shape)
-    # print("IMPORTANT. Probas shape is: \n", probas.shape, probas_hat.shape, e.shape)
-    # jax.debug.breakpoint()
-    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas.squeeze(), e))
+
+    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas, es))
 
     es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis[jnp.arange(X.shape[0]), es_hat.squeeze()]
+    xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
     # error_es = jnp.mean((es_hat - e)**2)
-    error_es = jnp.mean(jnp.abs(es_hat - e))
+    error_es = jnp.mean(jnp.abs(es_hat - es))
 
     # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
-    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat, xis_hat, xi)
+    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
 
-    # print("New xis et al shape is:", new_xis.shape, xis_hat.shape, xis.shape, es_hat.shape, "\n")
 
-    term1 = l2_norm(X, X_hat)
+    term1 = l2_norm(Xs, Xs_hat)
     # term2 = error_es
     # term2 = error_es+cross_ent
     term2 = cross_ent
@@ -560,24 +557,24 @@ if train == True:
     print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
     ## Save the results
-    np.save("data/losses_10.npy", losses)
-    np.save("data/nb_steps_10.npy", nb_steps)
-    np.save("data/xis_10.npy", xis)
-    np.save("data/init_xis_10.npy", init_xis)
+    np.save("data/losses_11.npy", losses)
+    np.save("data/nb_steps_11.npy", nb_steps)
+    np.save("data/xis_11.npy", xis)
+    np.save("data/init_xis_11.npy", init_xis)
 
     model = eqx.combine(params, static)
-    eqx.tree_serialise_leaves("data/model_10.eqx", model)
+    eqx.tree_serialise_leaves("data/model_11.eqx", model)
 
 else:
     print("\nNo training, loading model and results from 'data' folder ...\n")
 
-    losses = np.load("data/losses_10.npy")
-    nb_steps = np.load("data/nb_steps_10.npy")
-    xis = np.load("data/xis_10.npy")
-    init_xis = np.load("data/init_xis_10.npy")
+    losses = np.load("data/losses_11.npy")
+    nb_steps = np.load("data/nb_steps_11.npy")
+    xis = np.load("data/xis_11.npy")
+    init_xis = np.load("data/init_xis_11.npy")
 
     model = eqx.combine(params, static)
-    model = eqx.tree_deserialise_leaves("data/model_10.eqx", model)
+    model = eqx.tree_deserialise_leaves("data/model_11.eqx", model)
 
 
 
@@ -676,7 +673,7 @@ ax['F'].set_title(r'Final Contexts')
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig("data/gan_node.png", dpi=300, bbox_inches='tight')
+plt.savefig("data/list_gan_node.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 print("Testing finished. Results saved in 'data' folder.\n")
