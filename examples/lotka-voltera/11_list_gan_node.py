@@ -56,12 +56,12 @@ SEED = 24
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 3e-3
+init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 250
-nb_epochs = 5000
+nb_epochs_cal = 2500
+nb_epochs = 10000
 batch_size = 9*128*10       ## 9 is the number of environments
 
 cutoff = 0.1
@@ -136,8 +136,8 @@ class SharedProcessor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        # return self.physics(t, x) + self.augmentation(t, x)
-        return self.augmentation(t, x)
+        return self.physics(t, x) + self.augmentation(t, x)
+        # return self.augmentation(t, x)
         # return self.physics(t, x)
 
 class EnvProcessor(eqx.Module):
@@ -183,23 +183,23 @@ class Generator(eqx.Module):
 
     def __call__(self, x0, t_eval, context):
 
-        # solution = diffrax.diffeqsolve(
-        #             diffrax.ODETerm(self.processor),
-        #             diffrax.Tsit5(),
-        #             args=context,
-        #             t0=t_eval[0],
-        #             t1=t_eval[-1],
-        #             dt0=t_eval[1] - t_eval[0],
-        #             y0=x0,
-        #             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-        #             saveat=diffrax.SaveAt(ts=t_eval),
-        #             max_steps=4096*10,
-        #         )
-        # return solution.ys, solution.stats["num_steps"]
+        solution = diffrax.diffeqsolve(
+                    diffrax.ODETerm(self.processor),
+                    diffrax.Tsit5(),
+                    args=context,
+                    t0=t_eval[0],
+                    t1=t_eval[-1],
+                    dt0=t_eval[1] - t_eval[0],
+                    y0=x0,
+                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+                    saveat=diffrax.SaveAt(ts=t_eval),
+                    max_steps=4096*10,
+                )
+        return solution.ys, solution.stats["num_steps"]
 
-        rhs = lambda x, t: self.processor(t, x, context)
-        X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
-        return X_hat, t_eval.size
+        # rhs = lambda x, t: self.processor(t, x, context)
+        # X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
+        # return X_hat, t_eval.size
 
 
 
@@ -288,7 +288,7 @@ def l2_norm(X, X_hat):
 ## Gets the mean of the xi's for each environment
 @partial(jax.vmap, in_axes=(0, None, None, None, None))
 def meanify_xis(e, es_hat, xis_hat, es_orig, xis_orig):      ## TODO: some xi's get updated, others don't
-    print("All shapes before meaninfying:", es_hat.shape, es_orig.shape, xis_hat.shape, xis_orig.shape, "\n")
+    # print("All shapes before meaninfying:", es_hat.shape, es_orig.shape, xis_hat.shape, xis_orig.shape, "\n")
     return jax.lax.cond((es_hat==e).sum()>0, 
                         lambda e: jnp.where((es_hat==e), xis_hat, 0.0).sum(axis=0) / (es_hat==e).sum(), 
                         lambda e: jnp.where((es_orig==e), xis_orig, 0.0).sum(axis=0) / (es_orig==e).sum(),      ## TODO, always make sure the batch is representative of all environments
@@ -470,12 +470,13 @@ def loss_fn(params, static, batch):
 
     term1 = l2_norm(Xs, Xs_hat)
     # term2 = error_es
-    # term2 = error_es+cross_ent
-    term2 = cross_ent
-    term3 = params_norm(params.generator.processor.env)
+    term2 = error_es+cross_ent
+    # term2 = cross_ent
+    # term3 = params_norm(params.generator.processor.env)
+    term3 = params_norm(params.discriminators)
 
-    loss_val = term1 + 1e-2*term2
-    # loss_val = term1 + 1e-2*term2 + 1e-3*term3
+    # loss_val = term1 + 1e-2*term2
+    loss_val = term1 + 1e-2*term2 + 1e-3*term3
     # loss_val = term2
 
     return loss_val, (new_xis, jnp.sum(nb_steps), term1, term2, term3)
@@ -501,8 +502,8 @@ if train == True:
     # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
     # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
     sched = optax.piecewise_constant_schedule(init_value=init_lr,
-                    boundaries_and_scales={int(total_steps*0.25):0.2, 
-                                            int(total_steps*0.5):0.2,
+                    boundaries_and_scales={int(total_steps*0.25):0.1, 
+                                            int(total_steps*0.5):0.5,
                                             int(total_steps*0.75):0.2})
     opt = optax.adam(sched)
     opt_state = opt.init(params)
@@ -593,9 +594,9 @@ def test_model(params, static, batch):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-# e = 0
+# e = 2
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
-# traj = 100
+# traj = 1061
 
 # test_length = cutoff_length
 test_length = nb_steps_per_traj
