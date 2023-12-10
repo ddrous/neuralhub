@@ -16,7 +16,7 @@
 import jax
 
 # from jax import config
-# jax.config.update("jax_debug_nans", True)
+jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
 print("\n############# Lotka-Volterra with Generator and Discriminators #############\n")
@@ -47,7 +47,7 @@ import time
 
 #%%
 
-SEED = 24
+SEED = 25
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
@@ -58,13 +58,13 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 250
-nb_epochs = 5000
-batch_size = 9*128*10       ## 9 is the number of environments
+nb_epochs_cal = 500
+nb_epochs = 2500
+batch_size = 9*128*1       ## 9 is the number of environments
 
 cutoff = 0.1
 
-train = False
+train = True
 
 #%%
 
@@ -82,7 +82,7 @@ train = False
 # # data = solution.y.T[None, None, ...]
 
 dataset = np.load('./data/lotka_volterra_big.npz')
-data, t_eval = dataset['X'], dataset['t']
+data, t_eval = dataset['X'][:, :batch_size//9, :, :], dataset['t']
 
 nb_envs = data.shape[0]
 nb_trajs_per_env = data.shape[1]
@@ -191,23 +191,23 @@ class Generator(eqx.Module):
 
     def __call__(self, x0, t_eval, context):
 
-        # solution = diffrax.diffeqsolve(
-        #             diffrax.ODETerm(self.processor),
-        #             diffrax.Tsit5(),
-        #             args=context,
-        #             t0=t_eval[0],
-        #             t1=t_eval[-1],
-        #             dt0=t_eval[1] - t_eval[0],
-        #             y0=x0,
-        #             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-        #             saveat=diffrax.SaveAt(ts=t_eval),
-        #             max_steps=4096*10,
-        #         )
-        # return solution.ys, solution.stats["num_steps"]
+        solution = diffrax.diffeqsolve(
+                    diffrax.ODETerm(self.processor),
+                    diffrax.Tsit5(),
+                    args=context,
+                    t0=t_eval[0],
+                    t1=t_eval[-1],
+                    dt0=t_eval[1] - t_eval[0],
+                    y0=x0,
+                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+                    saveat=diffrax.SaveAt(ts=t_eval),
+                    max_steps=4096*10,
+                )
+        return solution.ys, solution.stats["num_steps"]
 
-        rhs = lambda x, t: self.processor(t, x, context)
-        X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
-        return X_hat, t_eval.size
+        # rhs = lambda x, t: self.processor(t, x, context)
+        # X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
+        # return X_hat, t_eval.size
 
 
 
@@ -279,6 +279,19 @@ model = GANNODE(proc_data_size=2,
                 key=model_key)
 
 params, static = eqx.partition(model, eqx.is_array)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # %%
 
@@ -429,23 +442,37 @@ if train == True:
 
     wall_time = time.time() - start_time
     time_in_hmsecs = seconds_to_hours(wall_time)
+
     print("\nCalibration step training time: %d hours %d mins %d secs" %time_in_hmsecs)
+
+    fig, ax = plt.subplot_mosaic('A', figsize=(6*2, 3.5*1))
+
+    ax['A'].plot(losses[:], label="Total", color="brown", linewidth=3, alpha=1.0)
+    ax['A'].set_xlabel("Epochs")
+    ax['A'].set_title("Calibration Loss")
+    ax['A'].set_yscale('log')
+    ax['A'].legend()
+
+    plt.tight_layout()
+    plt.savefig("data/list_gan_node_calibration.png", dpi=300, bbox_inches='tight')
+    plt.show()
 
 else:
     print("\nNo training, skipping calibration step ...\n")
 
 
-fig, ax = plt.subplot_mosaic('A', figsize=(6*2, 3.5*1))
 
-ax['A'].plot(losses[:], label="Total", color="brown", linewidth=3, alpha=1.0)
-ax['A'].set_xlabel("Epochs")
-ax['A'].set_title("Calibration Loss")
-ax['A'].set_yscale('log')
-ax['A'].legend()
 
-plt.tight_layout()
-plt.savefig("data/list_gan_node_calibration.png", dpi=300, bbox_inches='tight')
-plt.show()
+
+
+
+
+
+
+
+
+
+
 
 
 # %%
@@ -584,6 +611,20 @@ else:
 
     model = eqx.combine(params, static)
     model = eqx.tree_deserialise_leaves("data/model_11.eqx", model)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
