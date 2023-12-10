@@ -60,7 +60,7 @@ environments = [
 ]
 
 
-n_traj_per_env = 128*10
+n_traj_per_env = 128*100
 # n_traj_per_env = 1
 n_steps_per_traj = 501
 

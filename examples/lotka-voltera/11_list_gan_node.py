@@ -2,14 +2,12 @@
 #%%[markdown]
 # # GAN-Neural ODE framework for generalising the Lotka-Volterra systems
 # List of ToDOs
-# - Use a list of discriminators, rather than a vmapped ensemble. This makes it easier to add a new discriminator during adaptation
 # - Use a time series as input to the discriminators, rather than a single point
-# - Initialise the discriminators on their own trajectories in advance, before training as a whole
 # - Put (concatenate) the context back in before each layer of the generator (neural ODE)
-# - Implement a cross-entropy loss for the discriminators probas
 # - Do I let the optimiser maintain its state from the calibration to the training phase ?
 
 ### Summary
+# - why not use one discriminator? because it wouldn't be good for adaptation
 
 
 #%%
@@ -60,13 +58,13 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 2500
-nb_epochs = 10000
+nb_epochs_cal = 250
+nb_epochs = 5000
 batch_size = 9*128*10       ## 9 is the number of environments
 
 cutoff = 0.1
 
-train = True
+train = False
 
 #%%
 
@@ -148,7 +146,9 @@ class EnvProcessor(eqx.Module):
         self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
-
+        # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+        #                 eqx.nn.Linear(width_size+context_size, width_size, key=keys[1]), jax.nn.softplus,
+        #                 eqx.nn.Linear(width_size+context_size, data_size, key=keys[2])]
     def __call__(self, t, x, context):
         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
         # y = x
@@ -160,6 +160,14 @@ class EnvProcessor(eqx.Module):
         for layer in self.layers:
             y = layer(y)
         return y
+
+        # y = x
+        # for i, layer in enumerate(self.layers):
+        #     if i%2==0:
+        #         y = jnp.concatenate([y, context], axis=-1)
+        #     y = layer(y)
+        # return y
+
 
 class Processor(eqx.Module):
     shared: SharedProcessor
@@ -183,23 +191,23 @@ class Generator(eqx.Module):
 
     def __call__(self, x0, t_eval, context):
 
-        solution = diffrax.diffeqsolve(
-                    diffrax.ODETerm(self.processor),
-                    diffrax.Tsit5(),
-                    args=context,
-                    t0=t_eval[0],
-                    t1=t_eval[-1],
-                    dt0=t_eval[1] - t_eval[0],
-                    y0=x0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-                    saveat=diffrax.SaveAt(ts=t_eval),
-                    max_steps=4096*10,
-                )
-        return solution.ys, solution.stats["num_steps"]
+        # solution = diffrax.diffeqsolve(
+        #             diffrax.ODETerm(self.processor),
+        #             diffrax.Tsit5(),
+        #             args=context,
+        #             t0=t_eval[0],
+        #             t1=t_eval[-1],
+        #             dt0=t_eval[1] - t_eval[0],
+        #             y0=x0,
+        #             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+        #             saveat=diffrax.SaveAt(ts=t_eval),
+        #             max_steps=4096*10,
+        #         )
+        # return solution.ys, solution.stats["num_steps"]
 
-        # rhs = lambda x, t: self.processor(t, x, context)
-        # X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
-        # return X_hat, t_eval.size
+        rhs = lambda x, t: self.processor(t, x, context)
+        X_hat = integrator(rhs, x0, t_eval, None, None, None, None, None, None)
+        return X_hat, t_eval.size
 
 
 
