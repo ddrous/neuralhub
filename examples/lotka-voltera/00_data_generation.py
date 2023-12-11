@@ -49,18 +49,18 @@ def lotka_volterra(t, state, alpha, beta, delta, gamma):
 environments = [
     {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 2.5},    ## TODO remove this!
     {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 3.0},
-    {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 3.5},
     {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 2.5},
+    {"alpha": 1.5, "beta": 0.5, "gamma": 1.0, "delta": 3.5},
     {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.0},
     {"alpha": 1.5, "beta": 1.0, "gamma": 1.0, "delta": 3.5},
+    {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 3.0},    ## TODO Reoder the environemtts
     {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 2.5},
-    {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 3.0},
     {"alpha": 1.5, "beta": 1.5, "gamma": 1.0, "delta": 3.5},
     # {"alpha": 1.5, "beta": 1.25, "gamma": 1.0, "delta": 1.0},
 ]
 
 
-n_traj_per_env = 128*100
+n_traj_per_env = 128*10
 # n_traj_per_env = 1
 n_steps_per_traj = 501
 

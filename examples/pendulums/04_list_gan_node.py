@@ -58,32 +58,19 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 2500
-nb_epochs = 2500
+nb_epochs_cal = 20
+nb_epochs = 100
 batch_size = 9*128*10       ## 9 is the number of environments
 
-cutoff = 0.1
+cutoff = 0.5
 context_size = 20
 
 train = True
 
 #%%
 
-# def lotka_volterra(t, state, alpha, beta, delta, gamma):
-#     x, y = state
-#     dx_dt = alpha * x - beta * x * y
-#     dy_dt = delta * x * y - gamma * y
-#     return [dx_dt, dy_dt]
-
-# p = {"alpha": 1.5, "beta": 1.0, "delta": 3.0, "gamma": 1.0}
-# t_eval = np.linspace(0, 10, 1001)
-# initial_state = [1.0, 1.0]
-
-# solution = solve_ivp(lotka_volterra, (0,10), initial_state, args=(p["alpha"], p["beta"], p["delta"], p["gamma"]), t_eval=t_eval)
-# # data = solution.y.T[None, None, ...]
-
-dataset = np.load('./data/lotka_volterra_big.npz')
-data, t_eval = dataset['X'][:, :batch_size//9, :, :], dataset['t']
+dataset = np.load('./data/simple_pendulum_big.npz')
+data, t_eval = dataset['X'][:, :, :, :], dataset['t']
 
 nb_envs = data.shape[0]
 nb_trajs_per_env = data.shape[1]
@@ -101,13 +88,15 @@ class Physics(eqx.Module):
     params: jnp.ndarray
 
     def __init__(self, key=None):
-        # self.params = jnp.abs(jax.random.normal(key, (4,)))
-        self.params = jax.random.uniform(key, (4,), minval=0., maxval=3.5)
+        keys = get_new_key(key, num=2)
+        self.params = jnp.concatenate([jax.random.uniform(keys[0], (1,), minval=0.25, maxval=1.75),
+                                       jax.random.uniform(keys[1], (1,), minval=2, maxval=10)])
 
     def __call__(self, t, x):
-        dx0 = x[0]*self.params[0] - x[0]*x[1]*self.params[1]
-        dx1 = x[0]*x[1]*self.params[2] - x[1]*self.params[3]
-        return jnp.array([dx0, dx1])
+        L, g = self.params
+        theta, theta_dot = x
+        theta_ddot = -(g / L) * jnp.sin(theta)
+        return jnp.array([theta_dot, theta_ddot])
 
 class Augmentation(eqx.Module):
     layers: list
@@ -505,7 +494,7 @@ if train == True:
 
     df = pd.DataFrame({'True':true[:plot_size], 'Pred':pred[:plot_size]})
     df = df.groupby(['True', 'Pred']).size().reset_index(name='Counts')
-    df = df.pivot(index='True', columns='Pred', values='Counts')
+    df = df.pivot(index='Pred', columns='True', values='Counts')
     sns.heatmap(df, annot=True, ax=ax['B'], cmap='YlOrBr', cbar=False, fmt="n")
     ax['B'].set_title("True vs. Pred for all Envs and Discriminators")
     ax['B'].invert_yaxis()
@@ -647,24 +636,24 @@ if train == True:
     print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
     ## Save the results
-    np.save("data/losses_11.npy", losses)
-    np.save("data/nb_steps_11.npy", nb_steps)
-    np.save("data/xis_11.npy", xis)
-    np.save("data/init_xis_11.npy", init_xis)
+    np.save("data/losses_04.npy", losses)
+    np.save("data/nb_steps_04.npy", nb_steps)
+    np.save("data/xis_04.npy", xis)
+    np.save("data/init_xis_04.npy", init_xis)
 
     model = eqx.combine(params, static)
-    eqx.tree_serialise_leaves("data/model_11.eqx", model)
+    eqx.tree_serialise_leaves("data/model_04.eqx", model)
 
 else:
     print("\nNo training, loading model and results from 'data' folder ...\n")
 
-    losses = np.load("data/losses_11.npy")
-    nb_steps = np.load("data/nb_steps_11.npy")
-    xis = np.load("data/xis_11.npy")
-    init_xis = np.load("data/init_xis_11.npy")
+    losses = np.load("data/losses_04.npy")
+    nb_steps = np.load("data/nb_steps_04.npy")
+    xis = np.load("data/xis_04.npy")
+    init_xis = np.load("data/init_xis_04.npy")
 
     model = eqx.combine(params, static)
-    model = eqx.tree_deserialise_leaves("data/model_11.eqx", model)
+    model = eqx.tree_deserialise_leaves("data/model_04.eqx", model)
 
 
 
@@ -721,21 +710,21 @@ fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 # mke = np.ceil(losses.shape[0]/100).astype(int)
 mks = 2
 
-ax['A'].plot(t_test, X[:, 0], c="deepskyblue", label="Preys (GT)")
-ax['A'].plot(t_test, X_hat[:, 0], "o", c="royalblue", label="Preys (NODE)", markersize=mks)
+ax['A'].plot(t_test, X[:, 0], c="deepskyblue", label=r"\theta (GT)")
+ax['A'].plot(t_test, X_hat[:, 0], "o", c="royalblue", label=r"\theta (NODE)", markersize=mks)
 
-ax['A'].plot(t_test, X[:, 1], c="violet", label="Predators (GT)")
-ax['A'].plot(t_test, X_hat[:, 1], "x", c="purple", label="Predators (NODE)", markersize=mks)
+ax['A'].plot(t_test, X[:, 1], c="violet", label=r"\dot \theta (GT)")
+ax['A'].plot(t_test, X_hat[:, 1], "x", c="purple", label=r"\dot \theta (NODE)", markersize=mks)
 
 ax['A'].set_xlabel("Time")
-ax['A'].set_ylabel("Counts")
+ax['A'].set_ylabel("State")
 ax['A'].set_title("Trajectories")
 ax['A'].legend()
 
 ax['B'].plot(X[:, 0], X[:, 1], c="turquoise", label="GT")
 ax['B'].plot(X_hat[:, 0], X_hat[:, 1], ".", c="teal", label="Neural ODE")
-ax['B'].set_xlabel("Preys")
-ax['B'].set_ylabel("Predators")
+ax['B'].set_xlabel(r"\theta")
+ax['B'].set_ylabel(r"\dot \theta")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
@@ -763,9 +752,9 @@ colors = ['dodgerblue', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple', 'brown
 
 ax['E'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors[:nb_envs], marker='X')
 ax['F'].scatter(xis[:,0], xis[:,1], s=30, c=colors[:nb_envs], marker='X')
-for i, (x, y) in enumerate(init_xis):
+for i, (x, y) in enumerate(init_xis[:, :2]):
     ax['E'].annotate(str(i), (x, y), fontsize=8)
-for i, (x, y) in enumerate(xis):
+for i, (x, y) in enumerate(xis[:, :2]):
     ax['F'].annotate(str(i), (x, y), fontsize=8)
 ax['E'].set_title(r'Initial Contexts ($\xi_e$)')
 ax['F'].set_title(r'Final Contexts')
