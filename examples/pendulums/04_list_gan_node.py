@@ -58,9 +58,9 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 20
-nb_epochs = 100
-batch_size = 9*128*10       ## 9 is the number of environments
+nb_epochs_cal = 5
+nb_epochs = 2000
+batch_size = 2*128*10       ## 2 is the number of environments
 
 cutoff = 0.5
 context_size = 20
@@ -124,17 +124,21 @@ class SharedProcessor(eqx.Module):
         self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
-        return self.physics(t, x) + self.augmentation(t, x)
+        # return self.physics(t, x) + self.augmentation(t, x)
         # return self.augmentation(t, x)
-        # return self.physics(t, x)
+        return self.physics(t, x)
 
 class EnvProcessor(eqx.Module):
     layers: list
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
         keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+        # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+        # self.layers = [eqx.nn.Linear(context_size, width_size, key=keys[0]), jax.nn.softplus,
+        self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
+        # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+                        # eqx.nn.Linear(width_size, context_size, key=keys[2])]
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
         # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
         #                 eqx.nn.Linear(width_size+context_size, width_size, key=keys[1]), jax.nn.softplus,
@@ -147,9 +151,24 @@ class EnvProcessor(eqx.Module):
         # jax.debug.breakpoint()
 
         y = jnp.concatenate([x, context], axis=0)
+        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x, context], axis=0)
         for layer in self.layers:
             y = layer(y)
         return y
+
+        # y = x
+        # for layer in self.layers:
+        #     y = layer(y)
+        # return y@jnp.broadcast_to(context[:, None], (context.shape[0], x.shape[0]))
+
+        # params = context
+        # for layer in self.layers:
+        #     params = layer(params)
+        # L, g = params
+        # theta, theta_dot = x
+        # theta_ddot = -(g / L) * jnp.sin(theta)
+        # return jnp.array([theta_dot, theta_ddot])
+
 
         # y = x
         # for i, layer in enumerate(self.layers):
@@ -487,12 +506,11 @@ if train == True:
     ax['A'].legend()
 
     true, pred, cols = test_ste_cal(params, static)
-    plot_size = -1
     # ax['B'].scatter(true[:plot_size], pred[:plot_size], c=cols[:plot_size])
 
     ## Make heatmap sith seaborn
 
-    df = pd.DataFrame({'True':true[:plot_size], 'Pred':pred[:plot_size]})
+    df = pd.DataFrame({'True':true[:], 'Pred':pred[:]})
     df = df.groupby(['True', 'Pred']).size().reset_index(name='Counts')
     df = df.pivot(index='Pred', columns='True', values='Counts')
     sns.heatmap(df, annot=True, ax=ax['B'], cmap='YlOrBr', cbar=False, fmt="n")
@@ -548,16 +566,19 @@ def loss_fn(params, static, batch):
 
     term1 = l2_norm(Xs, Xs_hat)
     # term2 = error_es
-    term2 = error_es+cross_ent
-    # term2 = cross_ent
+    # term2 = error_es+cross_ent
+    term2 = cross_ent
     # term3 = params_norm(params.generator.processor.env)
     term3 = params_norm(params.discriminators)
+    term4 = jnp.mean(new_xis**2)
 
     # loss_val = term1 + 1e-2*term2
     loss_val = term1 + 1e-2*term2 + 1e-3*term3
     # loss_val = term2
+    # loss_val = term1 + 1e-2*term2 + term4 + 1e-3*term3
 
     return loss_val, (new_xis, jnp.sum(nb_steps), term1, term2, term3)
+    # return loss_val, (init_xis, jnp.sum(nb_steps), term1, term2, term3)
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -710,11 +731,11 @@ fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 # mke = np.ceil(losses.shape[0]/100).astype(int)
 mks = 2
 
-ax['A'].plot(t_test, X[:, 0], c="deepskyblue", label=r"\theta (GT)")
-ax['A'].plot(t_test, X_hat[:, 0], "o", c="royalblue", label=r"\theta (NODE)", markersize=mks)
+ax['A'].plot(t_test, X[:, 0], c="deepskyblue", label=r"$\theta$ (GT)")
+ax['A'].plot(t_test, X_hat[:, 0], "o", c="royalblue", label=r"$\theta$ (NODE)", markersize=mks)
 
-ax['A'].plot(t_test, X[:, 1], c="violet", label=r"\dot \theta (GT)")
-ax['A'].plot(t_test, X_hat[:, 1], "x", c="purple", label=r"\dot \theta (NODE)", markersize=mks)
+ax['A'].plot(t_test, X[:, 1], c="violet", label=r"$\dot \theta$ (GT)")
+ax['A'].plot(t_test, X_hat[:, 1], "x", c="purple", label=r"$\dot \theta$ (NODE)", markersize=mks)
 
 ax['A'].set_xlabel("Time")
 ax['A'].set_ylabel("State")
@@ -723,8 +744,8 @@ ax['A'].legend()
 
 ax['B'].plot(X[:, 0], X[:, 1], c="turquoise", label="GT")
 ax['B'].plot(X_hat[:, 0], X_hat[:, 1], ".", c="teal", label="Neural ODE")
-ax['B'].set_xlabel(r"\theta")
-ax['B'].set_ylabel(r"\dot \theta")
+ax['B'].set_xlabel(r"$\theta$")
+ax['B'].set_ylabel(r"$\dot \theta$")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
