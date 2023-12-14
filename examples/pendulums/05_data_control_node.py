@@ -60,6 +60,8 @@ batch_size = 128*1
 
 cutoff = 0.5
 
+train = False           ### Implement this thing !!! It works on Isambard
+
 #%%
 
 dataset = np.load('./data/simple_pendulum_big.npz')
@@ -142,7 +144,7 @@ def loss_fn(params, static, batch):
     print("Shapes of elements in a batch:", X.shape, xi.shape, t.shape, "\n")
 
     def solve_ivp(x0, xi):
-        return diffrax.diffeqsolve(
+        sol =  diffrax.diffeqsolve(
             diffrax.ODETerm(eqx.combine(params, static)),
             diffrax.Tsit5(),
             args=xi,
@@ -153,9 +155,10 @@ def loss_fn(params, static, batch):
             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
             saveat=diffrax.SaveAt(ts=t),
             max_steps=4096*1,
-        ).ys
+        )
+        return sol.ys, sol.stats["num_steps"]
 
-    X_hat = jax.vmap(solve_ivp, in_axes=(0, 0))(X[:, 0, :], xi)
+    X_hat, nb_steps = jax.vmap(solve_ivp, in_axes=(0, 0))(X[:, 0, :], xi)
 
     # t_batched = jnp.broadcast_to(t, (X.shape[0], t.shape[0]))
     # batched_integrator = jax.vmap(integrator, in_axes=(None, None, 0, 0, None, None, None, None, None, None))
@@ -165,22 +168,23 @@ def loss_fn(params, static, batch):
     term2 = params_norm(params.env)
 
     # return term1, (term1, term2)
-    return term1 + 1e-3*term2, (term1, term2)
+    return term1 + 1e-3*term2, (jnp.sum(nb_steps), term1, term2)
 
 
 @partial(jax.jit, static_argnums=(1))
 def train_step(params, static, batch, opt_state):
     print('\nCompiling function "train_step" ...\n')
 
-    (loss, (term1, term2)), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
+    (loss, aux_data), grads  = jax.value_and_grad(loss_fn, has_aux=True)(params, static, batch)
 
     updates, opt_state = opt.update(grads, opt_state)
     params = optax.apply_updates(params, updates)
 
-    return params, opt_state, loss, term1, term2
+    return params, opt_state, loss, aux_data
 
 
-total_steps = nb_epochs
+nb_steps_per_epoch = data.shape[1]//batch_size
+total_steps = nb_epochs * nb_steps_per_epoch
 
 sched = optax.piecewise_constant_schedule(init_value=init_lr,
                 boundaries_and_scales={int(total_steps*0.25):0.5, 
@@ -190,40 +194,60 @@ sched = optax.piecewise_constant_schedule(init_value=init_lr,
 opt = optax.adam(sched)
 opt_state = opt.init(params)
 
-print(f"\n\n=== Beginning Training ... ===")
 
-start_time = time.time()
+if train == True:
 
-losses = []
-for epoch in range(nb_epochs):
+    print(f"\n\n=== Beginning Training ... ===")
 
-    nb_batches = 0
-    loss_sum = jnp.zeros(3)
-    for i in range(0, data.shape[1], batch_size):
-        e = i%2
-        xi = jnp.ones((batch_size, 1))*(-1) if e==0 else jnp.ones((batch_size, 1))*(1)
-        batch = (data[e,i:i+batch_size,:cutoff_length,:], xi, t_eval[:cutoff_length])
-    
-        params, opt_state, loss, term1, term2 = train_step(params, static, batch, opt_state)
+    start_time = time.time()
 
-        loss_sum += jnp.array([loss, term1, term2])
-        nb_batches += 1
+    nb_steps = []
+    losses = []
+    for epoch in range(nb_epochs):
 
-    loss_epoch = loss_sum/nb_batches
-    losses.append(loss_epoch)
+        nb_batches = 0
+        loss_sum = jnp.zeros(3)
+        nb_steps_eph = 0
 
-    if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-        print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}      TrajLoss: {loss_epoch[1]:-.8f}      ParamsLoss: {loss_epoch[2]:-.8f}", flush=True)
+        for i in range(nb_steps_per_epoch):
+            e = i%2
+            xi = jnp.ones((batch_size, 1))*(-1) if e==0 else jnp.ones((batch_size, 1))*(1)
+            batch = (data[e,i*batch_size:(i+1)*batch_size,:cutoff_length,:], xi, t_eval[:cutoff_length])
+        
+            params, opt_state, loss, (nb_steps_val, term1, term2) = train_step(params, static, batch, opt_state)
 
-losses = jnp.vstack(losses)
-# ax = sbplot(losses, label=["Total", "Traj", "Params_a"], x_label='Epoch', y_label='L2', y_scale="log", title='Losses', ax=ax);
-# plt.savefig(f"data/loss_simple.png", dpi=300, bbox_inches='tight')
-# # plt.show()
-# plt.legend()
+            loss_sum += jnp.array([loss, term1, term2])
+            nb_steps_eph += nb_steps_val
+            nb_batches += 1
 
-wall_time = time.time() - start_time
-time_in_hmsecs = seconds_to_hours(wall_time)
-print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+        loss_epoch = loss_sum/nb_batches
+        losses.append(loss_epoch)
+        nb_steps.append(nb_steps_eph)
+
+        if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
+            print(f"    Epoch: {epoch:-5d}      TotalLoss: {loss_epoch[0]:-.8f}      TrajLoss: {loss_epoch[1]:-.8f}      ParamsLoss: {loss_epoch[2]:-.8f}", flush=True)
+
+    losses = jnp.vstack(losses)
+    nb_steps = jnp.array(nb_steps)
+
+    wall_time = time.time() - start_time
+    time_in_hmsecs = seconds_to_hours(wall_time)
+    print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+
+    ## Save the results
+    np.save("data/losses_05.npy", losses)
+    np.save("data/nb_steps_05.npy", nb_steps)
+    model = eqx.combine(params, static)
+    eqx.tree_serialise_leaves("data/model_05.eqx", model)
+
+else:
+    print("\nNo training, loading data from previous run ...\n")
+
+    ## Load the results
+    losses = np.load("data/losses_05.npy")
+    # nb_steps = np.load("data/nb_steps_05.npy")
+    model = eqx.combine(params, static)
+    model = eqx.tree_deserialise_leaves("data/model_05.eqx", model)
 
 
 # %%
@@ -247,7 +271,6 @@ def test_model(params, static, batch):
         max_steps=4096*1,
     ).ys
 
-
 e = np.random.randint(0, 2)
 traj = np.random.randint(0, data.shape[1])
 
@@ -256,12 +279,6 @@ t_test = t_eval
 xi = jnp.array([-1]) if e==0 else jnp.array([1])
 
 X_hat = test_model(params, static, (X[0,:], xi, t_test))
-
-# print("X_hat values", X_hat)
-
-# ax = sbplot(X_hat[:,0], X_hat[:,1], x_label='Preys', y_label='Predators', label=f'Pred', title=f'Phase space, traj {i}')
-# ax = sbplot(X[:,0], X[:,1], "--", lw=1, label=f'True', ax=ax)
-
 
 fig, ax = plt.subplot_mosaic('AB;CC;DD', figsize=(6*2, 3.5*3))
 
@@ -290,17 +307,16 @@ mke = np.ceil(losses.shape[0]/100).astype(int)
 
 ax['C'].plot(losses[:,0], label="Total", color="grey", linewidth=3, alpha=1.0)
 ax['C'].plot(losses[:,1], "x-", markevery=mke, markersize=mks, label="Traj", color="grey", linewidth=1, alpha=0.5)
-ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=mks, label="Discrim", color="grey", linewidth=1, alpha=0.5)
-ax['C'].plot(losses[:,3], "^-", markevery=mke, markersize=3, label="Params", color="grey", linewidth=1, alpha=0.5)
+ax['C'].plot(losses[:,2], "o-", markevery=mke, markersize=mks, label="Params", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
 ax['C'].set_yscale('log')
 ax['C'].legend()
 
-nb_steps = np.arange(0, losses.shape[0], 1)
+nb_steps = np.ones(nb_epochs)
 ax['D'].plot(nb_steps, c="brown")
 ax['D'].set_xlabel("Epochs")
-ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs) - FAKE")
+ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs)")
 ax['D'].set_yscale('log')
 
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
@@ -311,14 +327,3 @@ plt.show()
 
 print("Testing finished. Results saved in 'data' folder.\n")
 
-
-# plt.savefig(f"data/coda_test_env{e}_traj{i}.png", dpi=300, bbox_inches='tight')
-plt.savefig(f"data/test_simple.png", dpi=300, bbox_inches='tight')
-
-
-#%% 
-
-model = eqx.combine(params, static)
-
-eqx.tree_serialise_leaves("data/model_05.eqx", model)
-# model = eqx.tree_deserialise_leaves("data/model_01.eqx", model)

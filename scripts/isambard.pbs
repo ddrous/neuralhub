@@ -1,11 +1,11 @@
 #!/bin/bash
-#PBS -q pascalq
-#PBS -l select=2:ncpus=1:ngpus=1
+#PBS -q ampereq
+#PBS -l select=1:ncpus=1:ngpus=1
 #PBS -l walltime=10:00:00
 #PBS -o ./scripts/reports/$PBS_JOBID.out
 
 ## Some commands to quickly try this on ISAMBARD
-# qsub scripts/isambard.pbs     # Submit the script to Isambard
+# qsub scripts/isambard.pbs     # Submit the script to Isambard (remember the queur, ampere, or pascal)
 # qstat -u br-rnzoyem           # Monitor my jobs
 
 ## Test commands
@@ -13,8 +13,15 @@
 # mpirun hostname
 # echo "I ran to fruition"
 
-conda activate jaxgpu
+# conda activate jaxgpu
+# problem_dir="./examples/lotka-voltera/"
+# cd "$problem_dir"
+# # python 01_coda_serial.py > data/nohup.log 2>&1
+# python 00_data_generation.py > data/nohup.log 2>&1
+
+
+source ./venv/bin/activate
 problem_dir="./examples/lotka-voltera/"
 cd "$problem_dir"
 # python 01_coda_serial.py > data/nohup.log 2>&1
-python 00_data_generation.py > data/nohup.log 2>&1
+python 10_gan_node.py > data/nohup.log 2>&1

@@ -85,7 +85,7 @@ def animate(i):
 ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=10, repeat=False, blit=True)
 plt.show()
 
-ani.save('data/simple_pen.mp4', writer='ffmpeg')
+# ani.save('data/simple_pen.mp4', writer='ffmpeg')
 
 # Save t_eval and the solution to a npz file
 np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
