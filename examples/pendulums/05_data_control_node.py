@@ -60,7 +60,7 @@ batch_size = 128*1
 
 cutoff = 0.5
 
-train = False           ### Implement this thing !!! It works on Isambard
+train = True           ### Implement this thing !!! It works on Isambard
 
 #%%
 
@@ -245,7 +245,7 @@ else:
 
     ## Load the results
     losses = np.load("data/losses_05.npy")
-    # nb_steps = np.load("data/nb_steps_05.npy")
+    nb_steps = np.load("data/nb_steps_05.npy")
     model = eqx.combine(params, static)
     model = eqx.tree_deserialise_leaves("data/model_05.eqx", model)
 
@@ -273,6 +273,9 @@ def test_model(params, static, batch):
 
 e = np.random.randint(0, 2)
 traj = np.random.randint(0, data.shape[1])
+
+# e = 0
+# traj = 168
 
 X = data[e, traj, :, :]
 t_test = t_eval
@@ -313,7 +316,6 @@ ax['C'].set_title("Loss Terms")
 ax['C'].set_yscale('log')
 ax['C'].legend()
 
-nb_steps = np.ones(nb_epochs)
 ax['D'].plot(nb_steps, c="brown")
 ax['D'].set_xlabel("Epochs")
 ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs)")
