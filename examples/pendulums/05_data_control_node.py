@@ -60,7 +60,7 @@ batch_size = 128*1
 
 cutoff = 0.5
 
-train = True           ### Implement this thing !!! It works on Isambard
+train = False           ### Implement this thing !!! It works on Isambard
 
 #%%
 
@@ -252,14 +252,14 @@ else:
 
 # %%
 
-def test_model(params, static, batch):
+def test_model(model, batch):
     X0, xi, t = batch
 
     # X_hat = integrator(params, static, X0, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
     # return X_hat
 
     return diffrax.diffeqsolve(
-        diffrax.ODETerm(eqx.combine(params, static)),
+        diffrax.ODETerm(model),
         diffrax.Tsit5(),
         args=xi,
         t0=t[0],
@@ -281,7 +281,7 @@ X = data[e, traj, :, :]
 t_test = t_eval
 xi = jnp.array([-1]) if e==0 else jnp.array([1])
 
-X_hat = test_model(params, static, (X[0,:], xi, t_test))
+X_hat = test_model(model, (X[0,:], xi, t_test))
 
 fig, ax = plt.subplot_mosaic('AB;CC;DD', figsize=(6*2, 3.5*3))
 
