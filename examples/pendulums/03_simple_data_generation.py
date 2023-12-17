@@ -42,7 +42,7 @@ environments = [
 # ]
 
 
-n_traj_per_env = 128*10
+n_traj_per_env = 128*100
 n_steps_per_traj = 501
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
@@ -88,6 +88,6 @@ plt.show()
 # ani.save('data/simple_pen.mp4', writer='ffmpeg')
 
 # Save t_eval and the solution to a npz file
-np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
+np.savez('data/simple_pendulum_super_big.npz', t=solution.t, X=data)
 
 

@@ -56,11 +56,12 @@ decay_rate = 0.1
 ## Training hps
 print_every = 100
 nb_epochs = 3000
-batch_size = 128*10
+batch_size = 128*5
+context_size = 2
 
 cutoff = 0.5
 
-train = True           ### Implement this thing !!! It works on Isambard
+train = False           ### Implement this thing !!! It works on Isambard
 
 #%%
 
@@ -118,7 +119,7 @@ class Processor(eqx.Module):
 
 model_key, training_key = generate_new_keys(SEED, num=2)
 
-model = Processor(data_size=2, width_size=16, depth=3, context_size=1, key=model_key)
+model = Processor(data_size=2, width_size=16, depth=3, context_size=context_size, key=model_key)
 params, static = eqx.partition(model, eqx.is_array)
 
 
@@ -184,6 +185,13 @@ def train_step(params, static, batch, opt_state):
     return params, opt_state, loss, aux_data
 
 
+def positional_encoding(e, context_size): #returns a vector of shape (2,) using both sin and cos functions
+    pos_even = jnp.sin(e/jnp.power(10000, 2*jnp.arange(context_size)/context_size))
+    pos_odd = jnp.cos(e/jnp.power(10000, 2*jnp.arange(context_size)/context_size))
+    
+    enc = [pos_even[i] if i%2==0 else pos_odd[i] for i in range(context_size)]
+    return jnp.array(enc)
+
 # @partial(jax.jit, static_argnums=(1))
 # def make_training_batch(data, batch_size, key):
 
@@ -201,15 +209,18 @@ def training_dataloader(arrays, batch_size, *, key):
     nb_trajs_per_env = data.shape[1]
     indices = jnp.arange(nb_trajs_per_env)
     while True:
-        new_key, ret_key = generate_new_keys(key, num=2)
-        perm = jax.random.permutation(new_key, indices)
+        perm_key, e_key = generate_new_keys(key, num=2)
+        perm = jax.random.permutation(perm_key, indices)
         start = 0
         end = batch_size
         while end < nb_trajs_per_env:
 
-            _, e_key = generate_new_keys(new_key, num=2)
+            e_key, ret_key = generate_new_keys(e_key, num=2)
             e = jax.random.randint(e_key, shape=(1,), minval=0, maxval=nb_envs)[0]
-            xi = jnp.ones((batch_size, 1))*(e)
+            # xi = jnp.ones((batch_size, 1))*(e)
+
+            es = jnp.ones((batch_size, 1))*(e)
+            xi = jax.vmap(positional_encoding, in_axes=(0, None))(es, context_size)
 
             batch_perm = perm[start:end]
             yield (data[e, batch_perm, :cutoff_length, :], xi, t_eval[:cutoff_length]), ret_key
@@ -248,12 +259,16 @@ if train == True:
         nb_steps_eph = 0
 
         _, training_key = generate_new_keys(training_key, num=2)
-        training_keys = generate_new_keys(training_key, num=nb_steps_per_epoch)
+        # training_keys = generate_new_keys(training_key, num=nb_steps_per_epoch)
 
         # for i in range(nb_steps_per_epoch):
         #     batch, training_key = make_training_batch(data, batch_size, training_key)
 
-        for batch, training_key in training_dataloader((data, t_eval), batch_size, key=training_key):
+        # for batch, training_key in training_dataloader((data, t_eval), batch_size, key=training_key):
+
+        data_gen = iter(training_dataloader((data, t_eval), batch_size, key=training_key))
+        for i in range(nb_steps_per_epoch):
+            batch, training_key = next(data_gen)
 
             params, opt_state, loss, (nb_steps_val, term1, term2) = train_step(params, static, batch, opt_state)
 
@@ -321,7 +336,8 @@ traj = np.random.randint(0, data.shape[1])
 
 X = data[e, traj, :, :]
 t_test = t_eval
-xi = jnp.array([e])
+# xi = jnp.array([e])
+xi = positional_encoding(e, context_size)
 
 X_hat = test_model(model, (X[0,:], xi, t_test))
 

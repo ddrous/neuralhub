@@ -58,9 +58,9 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 5
+nb_epochs_cal = 500
 nb_epochs = 2000
-batch_size = 2*128*10       ## 2 is the number of environments
+batch_size = 9*128*10       ## 2 is the number of environments
 
 cutoff = 0.5
 context_size = 20
@@ -133,9 +133,9 @@ class EnvProcessor(eqx.Module):
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
         keys = get_new_key(key, num=3)
-        # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+        self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
         # self.layers = [eqx.nn.Linear(context_size, width_size, key=keys[0]), jax.nn.softplus,
-        self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
+        # self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
         # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         # eqx.nn.Linear(width_size, context_size, key=keys[2])]
@@ -694,10 +694,10 @@ else:
 
 # %%
 
-def test_model(params, static, batch):
+def test_model(model, batch):
     xi, X0, t_eval = batch
 
-    model = eqx.combine(params, static)
+    # model = eqx.combine(params, static)
     X_hat, _, _, _ = model(X0, t_eval, xi)
 
     return X_hat, _
@@ -724,7 +724,7 @@ print("    Length of the training trajectories:", cutoff_length)
 print("    Length of the testing trajectories:", test_length)
 
 
-X_hat, _ = test_model(params, static, (xis[e], X[0,:], t_test))
+X_hat, _ = test_model(model, (xis[e], X[0,:], t_test))
 
 fig, ax = plt.subplot_mosaic('AB;CC;DD;EF', figsize=(6*2, 3.5*4))
 
