@@ -30,6 +30,16 @@ def get_new_key(key=None, num=1):
 
     return keys if num > 1 else keys[0]
 
+def generate_new_keys(key=None, num=1):
+    if key is None:
+        print("WARNING: No key provided, using time as seed")
+        key = jax.random.PRNGKey(time.time_ns())
+
+    elif isinstance(key, int):
+        key = jax.random.PRNGKey(key)
+
+    return jax.random.split(key, num=num)
+
 ## Wrapper function for matplotlib and seaborn
 def sbplot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=None, x_scale='linear', y_scale='linear', xlim=None, ylim=None, **kwargs):
     import matplotlib.pyplot as plt

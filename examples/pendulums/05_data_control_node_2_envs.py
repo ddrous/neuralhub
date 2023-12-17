@@ -64,7 +64,7 @@ train = False           ### Implement this thing !!! It works on Isambard
 
 #%%
 
-dataset = np.load('./data/simple_pendulum_big.npz')
+dataset = np.load('./data/simple_pendulum_big_2_envs.npz')
 data, t_eval = dataset['X'], dataset['t']
 
 cutoff_length = int(cutoff*data.shape[2])
