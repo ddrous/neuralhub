@@ -50,14 +50,14 @@ SEED = 27
 integrator = dopri_integrator_diff
 
 ## Optimiser hps
-init_lr = 3e-3
+init_lr = 3e-4
 decay_rate = 0.1
 
 ## Training hps
 print_every = 100
-nb_epochs = 3000
-batch_size = 128*5
-context_size = 2
+nb_epochs = 30000
+batch_size = 128*10
+context_size = 1
 
 cutoff = 0.5
 
@@ -89,19 +89,55 @@ class Physics(eqx.Module):
         theta_ddot = -(g / L) * jnp.sin(theta)
         return jnp.array([theta_dot, theta_ddot])
 
+# class Augmentation(eqx.Module):
+#     layers: list
+
+#     def __init__(self, data_size, width_size, depth, context_size, key=None):
+#         keys = generate_new_keys(key, num=4)
+#         self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+#                         # eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[2]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, data_size, key=keys[3])]
+#     def __call__(self, t, x, context):
+#         y = jnp.concatenate([x, context], axis=0)
+#         for layer in self.layers:
+#             y = layer(y)
+#         return y
+
+
 class Augmentation(eqx.Module):
-    layers: list
+    layers_data: list
+    layers_context: list
+    layers_shared: list
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = generate_new_keys(key, num=3)
-        self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+        keys = generate_new_keys(key, num=9)
+        self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+                        # eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
+
+        self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
+                        # eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[5])]
+
+        self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[8])]
+
+
     def __call__(self, t, x, context):
-        y = jnp.concatenate([x, context], axis=0)
-        for layer in self.layers:
+
+        y = x
+        context = context
+        for i in range(len(self.layers_data)):
+            y = self.layers_data[i](y)
+            context = self.layers_context[i](context)
+
+        y = jnp.concatenate([y, context], axis=0)
+        for layer in self.layers_shared:
             y = layer(y)
         return y
+
 
 class Processor(eqx.Module):
     shared: Physics
@@ -119,7 +155,7 @@ class Processor(eqx.Module):
 
 model_key, training_key = generate_new_keys(SEED, num=2)
 
-model = Processor(data_size=2, width_size=16, depth=3, context_size=context_size, key=model_key)
+model = Processor(data_size=2, width_size=16*1, depth=3, context_size=context_size, key=model_key)
 params, static = eqx.partition(model, eqx.is_array)
 
 
@@ -192,6 +228,9 @@ def positional_encoding(e, context_size): #returns a vector of shape (2,) using 
     enc = [pos_even[i] if i%2==0 else pos_odd[i] for i in range(context_size)]
     return jnp.array(enc)
 
+def bjection_whole_to_integers(n):
+    return (n//2)+1 if n%2==0 else -(n+1)//2
+
 # @partial(jax.jit, static_argnums=(1))
 # def make_training_batch(data, batch_size, key):
 
@@ -202,6 +241,26 @@ def positional_encoding(e, context_size): #returns a vector of shape (2,) using 
 #     batch = (data[e,i*batch_size:(i+1)*batch_size,:cutoff_length,:], xi, t_eval[:cutoff_length])
 
 #     return batch, ret_key
+
+
+
+# @partial(jax.jit, static_argnums=(2,3))
+def generate_training_batch(batch_id, data, batch_size):      ## TODO: benchmark and save these btaches to disk
+    """ Make a batch """
+
+    traj_start, traj_end = batch_id*batch_size, (batch_id+1)*batch_size
+
+    es_batch = []
+    xis_batch = []
+    X_batch = []
+
+    for e in range(nb_envs):
+        es_batch.append(jnp.ones((batch_size,), dtype=int)*e)
+        xis_batch.append(jnp.ones((batch_size, context_size))*bjection_whole_to_integers(e))
+        X_batch.append(data[e, traj_start:traj_end, :cutoff_length, :])
+
+    return jnp.vstack(X_batch), jnp.vstack(xis_batch), t_eval[:cutoff_length]
+
 
 def training_dataloader(arrays, batch_size, *, key):
     data, t_eval = arrays
@@ -261,14 +320,15 @@ if train == True:
         _, training_key = generate_new_keys(training_key, num=2)
         # training_keys = generate_new_keys(training_key, num=nb_steps_per_epoch)
 
-        # for i in range(nb_steps_per_epoch):
-        #     batch, training_key = make_training_batch(data, batch_size, training_key)
+        for i in range(nb_steps_per_epoch):
+            # batch, training_key = make_training_batch(data, batch_size, training_key)
+            batch = generate_training_batch(i, data, batch_size)
 
         # for batch, training_key in training_dataloader((data, t_eval), batch_size, key=training_key):
 
-        data_gen = iter(training_dataloader((data, t_eval), batch_size, key=training_key))
-        for i in range(nb_steps_per_epoch):
-            batch, training_key = next(data_gen)
+        # data_gen = iter(training_dataloader((data, t_eval), batch_size, key=training_key))
+        # for i in range(nb_steps_per_epoch):
+        #     batch, training_key = next(data_gen)
 
             params, opt_state, loss, (nb_steps_val, term1, term2) = train_step(params, static, batch, opt_state)
 
@@ -382,8 +442,10 @@ ax['D'].set_yscale('log')
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig("data/data_control_node.png", dpi=300, bbox_inches='tight')
+plt.savefig("data/data_control_node_06.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 print("Testing finished. Results saved in 'data' folder.\n")
 
+
+# %%

@@ -19,13 +19,13 @@ def simple_pendulum(t, state, L, g):
 environments = [
     {"L": 0.5, "g": 9.81},    ## Eearth
     {"L": 1.0, "g": 9.81},
-    {"L": 1.5, "g": 9.81},
+    # {"L": 1.5, "g": 9.81},
     {"L": 0.5, "g": 24.79},      ## Jupiter
     {"L": 1.0, "g": 24.79},
-    {"L": 1.5, "g": 24.79},
+    # {"L": 1.5, "g": 24.79},
     {"L": 0.5, "g": 3.72},      ## Mars
     {"L": 1.0, "g": 3.72},
-    {"L": 1.5, "g": 3.72},
+    # {"L": 1.5, "g": 3.72},
 ]
 
 
@@ -42,7 +42,7 @@ environments = [
 # ]
 
 
-n_traj_per_env = 128*100
+n_traj_per_env = 128*10
 n_steps_per_traj = 501
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
@@ -88,6 +88,6 @@ plt.show()
 # ani.save('data/simple_pen.mp4', writer='ffmpeg')
 
 # Save t_eval and the solution to a npz file
-np.savez('data/simple_pendulum_super_big.npz', t=solution.t, X=data)
+np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
 
 
