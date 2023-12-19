@@ -54,16 +54,16 @@ SEED = 25
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 1e-4
+init_lr = 3e-3
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 500
-nb_epochs = 2000
-batch_size = 9*128*10       ## 2 is the number of environments
+nb_epochs_cal = 100
+nb_epochs = 800
+batch_size = 3*128*2       ## 2 is the number of environments
 
 cutoff = 0.5
-context_size = 20
+context_size = 2
 
 train = True
 
@@ -128,54 +128,91 @@ class SharedProcessor(eqx.Module):
         # return self.augmentation(t, x)
         return self.physics(t, x)
 
+# class EnvProcessor(eqx.Module):
+#     layers: list
+
+#     def __init__(self, data_size, width_size, depth, context_size, key=None):
+#         keys = get_new_key(key, num=3)
+#         self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+#         # self.layers = [eqx.nn.Linear(context_size, width_size, key=keys[0]), jax.nn.softplus,
+#         # self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
+#         # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+#                         # eqx.nn.Linear(width_size, context_size, key=keys[2])]
+#                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
+#         # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
+#         #                 eqx.nn.Linear(width_size+context_size, width_size, key=keys[1]), jax.nn.softplus,
+#         #                 eqx.nn.Linear(width_size+context_size, data_size, key=keys[2])]
+#     def __call__(self, t, x, context):
+#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+#         # y = x
+
+#         # jax.debug.print("\n\n\n\n\n\nx shape {} context {}\n\n\n\n\n\n", x, context)
+#         # jax.debug.breakpoint()
+
+#         y = jnp.concatenate([x, context], axis=0)
+#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x, context], axis=0)
+#         for layer in self.layers:
+#             y = layer(y)
+#         return y
+
+#         # y = x
+#         # for layer in self.layers:
+#         #     y = layer(y)
+#         # return y@jnp.broadcast_to(context[:, None], (context.shape[0], x.shape[0]))
+
+#         # params = context
+#         # for layer in self.layers:
+#         #     params = layer(params)
+#         # L, g = params
+#         # theta, theta_dot = x
+#         # theta_ddot = -(g / L) * jnp.sin(theta)
+#         # return jnp.array([theta_dot, theta_ddot])
+
+
+#         # y = x
+#         # for i, layer in enumerate(self.layers):
+#         #     if i%2==0:
+#         #         y = jnp.concatenate([y, context], axis=-1)
+#         #     y = layer(y)
+#         # return y
+
+
+
+
 class EnvProcessor(eqx.Module):
-    layers: list
+    layers_data: list
+    layers_context: list
+    layers_shared: list
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-        # self.layers = [eqx.nn.Linear(context_size, width_size, key=keys[0]), jax.nn.softplus,
-        # self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
-        # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+        keys = generate_new_keys(key, num=9)
+        self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-                        # eqx.nn.Linear(width_size, context_size, key=keys[2])]
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
-        # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-        #                 eqx.nn.Linear(width_size+context_size, width_size, key=keys[1]), jax.nn.softplus,
-        #                 eqx.nn.Linear(width_size+context_size, data_size, key=keys[2])]
+
+        self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[5])]
+
+        self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[8])]
+
+
     def __call__(self, t, x, context):
-        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        # y = x
 
-        # jax.debug.print("\n\n\n\n\n\nx shape {} context {}\n\n\n\n\n\n", x, context)
-        # jax.debug.breakpoint()
+        y = x
+        context = context
+        for i in range(len(self.layers_data)):
+            y = self.layers_data[i](y)
+            context = self.layers_context[i](context)
 
-        y = jnp.concatenate([x, context], axis=0)
-        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x, context], axis=0)
-        for layer in self.layers:
+        y = jnp.concatenate([y, context], axis=0)
+        for layer in self.layers_shared:
             y = layer(y)
         return y
 
-        # y = x
-        # for layer in self.layers:
-        #     y = layer(y)
-        # return y@jnp.broadcast_to(context[:, None], (context.shape[0], x.shape[0]))
-
-        # params = context
-        # for layer in self.layers:
-        #     params = layer(params)
-        # L, g = params
-        # theta, theta_dot = x
-        # theta_ddot = -(g / L) * jnp.sin(theta)
-        # return jnp.array([theta_dot, theta_ddot])
-
-
-        # y = x
-        # for i, layer in enumerate(self.layers):
-        #     if i%2==0:
-        #         y = jnp.concatenate([y, context], axis=-1)
-        #     y = layer(y)
-        # return y
 
 
 class Processor(eqx.Module):
@@ -379,15 +416,18 @@ def loss_fn_cal(params, static, batch):
     cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas, es))
 
     es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
-    # error_es = jnp.mean((es_hat - e)**2)
-    error_es = jnp.mean(jnp.abs(es_hat - es))
+    # error_es = jnp.mean((es_hat - es)**2)
+    # error_es = jnp.mean(jnp.abs(es_hat - es))
 
+    # pen_params = params_norm(params.discriminators)
+
+    xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
     # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
     new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
 
-    # loss_val = error_es
     loss_val = cross_ent
+    # loss_val = error_es + 1e-3*pen_params
+    # loss_val = cross_ent + 1e-3*pen_params
 
     return loss_val, (new_xis)
 
@@ -437,7 +477,8 @@ if train == True:
 
     total_steps_cal = nb_epochs_cal * nb_train_steps_per_epoch
 
-    sched = optax.exponential_decay(init_lr, total_steps_cal, 0.9)
+    # sched = init_lr
+    sched = optax.exponential_decay(init_lr, total_steps_cal, 0.95)
     opt = optax.adam(sched)
     opt_state = opt.init(params)
 
@@ -541,7 +582,47 @@ if train == True:
 ### ==== Step 2: training both generator and discriminators at once ==== ####
 
 
-## Main loss function
+# ## Main loss function
+# def loss_fn(params, static, batch):
+#     # print('\nCompiling function "loss_fn" ...\n')
+#     es, xis, Xs, t_eval = batch
+#     print("Shapes of elements in a batch:", es.shape, xis.shape, Xs.shape, t_eval.shape, "\n")
+
+#     model = eqx.combine(params, static)
+
+#     Xs_hat, nb_steps, probas, xis_hat = jax.vmap(model, in_axes=(0, None, 0))(Xs[:, 0, :], t_eval, xis)
+
+#     probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
+
+#     cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas, es))
+
+#     es_hat = jnp.argmax(probas, axis=1)
+#     xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
+#     # error_es = jnp.mean((es_hat - e)**2)
+#     error_es = jnp.mean(jnp.abs(es_hat - es))
+
+#     # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
+#     new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
+
+
+#     term1 = l2_norm(Xs, Xs_hat)
+#     # term2 = error_es
+#     # term2 = error_es+cross_ent
+#     term2 = cross_ent
+#     # term3 = params_norm(params.generator.processor.env)
+#     term3 = params_norm(params.discriminators)
+#     term4 = jnp.mean(new_xis**2)
+
+#     loss_val = term1 + 1e-2*term2
+#     # loss_val = term1 + 1e-2*term2 + 1e-3*term3
+#     # loss_val = term2
+#     # loss_val = term1 + 1e-2*term2 + term4 + 1e-3*term3
+
+#     return loss_val, (new_xis, jnp.sum(nb_steps), term1, term2, term3)
+#     # return loss_val, (init_xis, jnp.sum(nb_steps), term1, term2, term3)
+
+
+
 def loss_fn(params, static, batch):
     # print('\nCompiling function "loss_fn" ...\n')
     es, xis, Xs, t_eval = batch
@@ -549,36 +630,14 @@ def loss_fn(params, static, batch):
 
     model = eqx.combine(params, static)
 
-    Xs_hat, nb_steps, probas, xis_hat = jax.vmap(model, in_axes=(0, None, 0))(Xs[:, 0, :], t_eval, xis)
-
-    probas_hat = jnp.max(probas, axis=1)        ## TODO: use this for cross-entropy loss
-
-    cross_ent = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(probas, es))
-
-    es_hat = jnp.argmax(probas, axis=1)
-    xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
-    # error_es = jnp.mean((es_hat - e)**2)
-    error_es = jnp.mean(jnp.abs(es_hat - es))
-
-    # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
-    new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
-
+    Xs_hat, nb_steps = jax.vmap(model.generator, in_axes=(0, None, 0))(Xs[:, 0, :], t_eval, xis)
 
     term1 = l2_norm(Xs, Xs_hat)
-    # term2 = error_es
-    # term2 = error_es+cross_ent
-    term2 = cross_ent
-    # term3 = params_norm(params.generator.processor.env)
-    term3 = params_norm(params.discriminators)
-    term4 = jnp.mean(new_xis**2)
+    term3 = params_norm(params.generator.processor.env)
 
-    # loss_val = term1 + 1e-2*term2
-    loss_val = term1 + 1e-2*term2 + 1e-3*term3
-    # loss_val = term2
-    # loss_val = term1 + 1e-2*term2 + term4 + 1e-3*term3
+    loss_val = term1 + 1e-3*term3
 
-    return loss_val, (new_xis, jnp.sum(nb_steps), term1, term2, term3)
-    # return loss_val, (init_xis, jnp.sum(nb_steps), term1, term2, term3)
+    return loss_val, (jnp.sum(nb_steps), term1, term3)
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -636,7 +695,9 @@ if train == True:
         for i in range(nb_train_steps_per_epoch):   ## Only two trajectories are used for each train_step
             batch = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_keys[i])
         
-            params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
+            # params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
+            params, opt_state, loss, (nb_steps_val, term1, term3) = train_step(params, static, batch, opt_state)
+            term2 = 1.
 
             loss_sum += jnp.array([loss, term1, term2, term3])
             nb_steps_eph += nb_steps_val
@@ -707,7 +768,7 @@ def test_model(model, batch):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-# e = 2
+e = 2
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 # traj = 1061
 
@@ -787,7 +848,7 @@ ax['F'].set_title(r'Final Contexts')
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig("data/list_gan_node.png", dpi=300, bbox_inches='tight')
+plt.savefig("data/list_gan_node_04.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 print("Testing finished. Results saved in 'data' folder.\n")

@@ -50,18 +50,18 @@ SEED = 27
 integrator = dopri_integrator_diff
 
 ## Optimiser hps
-init_lr = 3e-4
+init_lr = 3e-3
 decay_rate = 0.1
 
 ## Training hps
 print_every = 100
-nb_epochs = 30000
-batch_size = 128*10
+nb_epochs = 1000
+batch_size = 128*2
 context_size = 1
 
 cutoff = 0.5
 
-train = False           ### Implement this thing !!! It works on Isambard
+train = True           ### Implement this thing !!! It works on Isambard
 
 #%%
 
@@ -113,11 +113,11 @@ class Augmentation(eqx.Module):
     def __init__(self, data_size, width_size, depth, context_size, key=None):
         keys = generate_new_keys(key, num=9)
         self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
-                        # eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
 
         self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
-                        # eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
 
         self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
@@ -229,7 +229,8 @@ def positional_encoding(e, context_size): #returns a vector of shape (2,) using 
     return jnp.array(enc)
 
 def bjection_whole_to_integers(n):
-    return (n//2)+1 if n%2==0 else -(n+1)//2
+    integer =  (n//2)+1 if n%2==0 else -(n+1)//2
+    return integer/5.
 
 # @partial(jax.jit, static_argnums=(1))
 # def make_training_batch(data, batch_size, key):
@@ -293,7 +294,7 @@ total_steps = nb_epochs * nb_steps_per_epoch
 
 sched = optax.piecewise_constant_schedule(init_value=init_lr,
                 boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                        int(total_steps*0.5):0.5,
+                                        int(total_steps*0.5):0.2,
                                         int(total_steps*0.75):0.5})
 
 opt = optax.adam(sched)
