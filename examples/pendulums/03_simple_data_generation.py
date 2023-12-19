@@ -52,8 +52,10 @@ t_eval = np.linspace(t_span[0], t_span[-1], n_steps_per_traj)  # Fewer frames
 
 for j in range(n_traj_per_env):
     # Initial conditions (prey and predator concentrations)
-    initial_state = np.concatenate([np.random.uniform(0, np.pi/2, size=(1,)), 
-                                    np.random.uniform(0, 1, size=(1,))])
+    initial_state = np.concatenate([np.random.uniform(-np.pi/2, np.pi/2, size=(1,)), 
+    # initial_state = np.concatenate([np.array([-np.pi/2]), 
+                                    np.random.uniform(-1, 1, size=(1,))])
+                                    # np.array([-1])])
 
     for i, selected_params in enumerate(environments):
         # print("Environment", i)
@@ -67,9 +69,9 @@ for j in range(n_traj_per_env):
 theta, theta_dot = solution.y
 
 # Create an animation of the pendulum's motion
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(13, 5))
 ax.set_xlim(-2.1, 2.1)
-ax.set_ylim(-1.9, 0.25)
+ax.set_ylim(-1.4, 0.25)
 
 pendulum, = ax.plot([], [], 'ro-', lw=2)
 time_template = 'Time = %.1fs'
@@ -82,7 +84,7 @@ def animate(i):
     time_text.set_text(time_template % solution.t[i])
     return pendulum, time_text
 
-ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=10, repeat=False, blit=True)
+ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=10, repeat=True, blit=True)
 plt.show()
 
 # ani.save('data/simple_pen.mp4', writer='ffmpeg')

@@ -90,7 +90,7 @@ class Physics(eqx.Module):
     def __init__(self, key=None):
         keys = get_new_key(key, num=2)
         self.params = jnp.concatenate([jax.random.uniform(keys[0], (1,), minval=0.25, maxval=1.75),
-                                       jax.random.uniform(keys[1], (1,), minval=2, maxval=10)])
+                                       jax.random.uniform(keys[1], (1,), minval=1, maxval=30)])
 
     def __call__(self, t, x):
         L, g = self.params

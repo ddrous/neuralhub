@@ -30,6 +30,8 @@
 # sbatch scripts/jade.sh  # Submit the script to JADE
 # sacct -u rrn27-wwp02    # Monitor my jobs
 
+## In interactive mode
+# salloc --job-name "GraphPinTInteractiveJob" --gres=gpu:1 --time 10:00:00
 
 #### run the application #####
 
