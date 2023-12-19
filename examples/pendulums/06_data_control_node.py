@@ -397,7 +397,9 @@ traj = np.random.randint(0, data.shape[1])
 X = data[e, traj, :, :]
 t_test = t_eval
 # xi = jnp.array([e])
-xi = positional_encoding(e, context_size)
+# xi = positional_encoding(e, context_size)
+# batch  = generate_training_batch(0, data, 1)[1][0]
+xi = jnp.array([bjection_whole_to_integers(e)])
 
 X_hat = test_model(model, (X[0,:], xi, t_test))
 
