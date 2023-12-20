@@ -36,8 +36,7 @@ from graphpint.integrators import *
 import optax
 from functools import partial
 import time
-from typing import List, Tuple, Callable
-
+import os
 
 #%%
 
@@ -50,22 +49,38 @@ SEED = 27
 integrator = dopri_integrator_diff
 
 ## Optimiser hps
-init_lr = 3e-3
+init_lr = 3e-2
 decay_rate = 0.1
 
 ## Training hps
 print_every = 100
 nb_epochs = 1000
-batch_size = 128*2
+batch_size = 128*10
 context_size = 1
 
 cutoff = 0.5
 
 train = True           ### Implement this thing !!! It works on Isambard
 
+
 #%%
 
-dataset = np.load('./data/simple_pendulum_big.npz')
+# - make a new folder inside 'data' whose name is the currennt time
+data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
+os.mkdir(data_folder)
+
+# - save the script in that folder
+script_name = os.path.basename(__file__)
+os.system(f"cp {script_name} {data_folder}");
+
+# - save the dataset as well
+dataset_path = "./data/simple_pendulum_big.npz"
+os.system(f"cp {dataset_path} {data_folder}");
+
+
+#%%
+
+dataset = np.load(dataset_path)
 data, t_eval = dataset['X'], dataset['t']
 
 nb_envs = data.shape[0]

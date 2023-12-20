@@ -56,13 +56,13 @@ SEED = 27
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 1e-2
+init_lr = 3e-2
 
 ## Training hps
 print_every = 100
 nb_epochs_cal = 300
-nb_epochs = 2800
-batch_size = 3*128*30       ## 2 is the number of environments
+nb_epochs = 800
+batch_size = 3*128*10       ## 2 is the number of environments
 
 cutoff = 0.5
 context_size = 2
@@ -340,7 +340,7 @@ class GANNODE(eqx.Module):
 model_key, training_key, testing_key = get_new_key(SEED, num=3)
 
 model = GANNODE(proc_data_size=2, 
-                proc_width_size=16, 
+                proc_width_size=16*2, 
                 proc_depth=3, 
                 context_size=context_size, 
                 traj_size=cutoff_length,
@@ -697,11 +697,11 @@ if train == True:
                     # boundaries_and_scales={int(total_steps*0.25):0.5, 
                     #                         int(total_steps*0.5):0.5,
                     #                         int(total_steps*0.75):0.5})
-                    # boundaries_and_scales={200:0.5, 
-                    #                         400:0.5,
-                    #                         600:0.5,
-                    #                         1200:0.2})
-                    boundaries_and_scales={1400:0.5})
+                    boundaries_and_scales={200:0.5, 
+                                            400:0.5,
+                                            600:0.5,
+                                            1200:0.2})
+                    # boundaries_and_scales={1400:0.5})
     opt = optax.adam(sched)
     opt_state = opt.init(params)
 
