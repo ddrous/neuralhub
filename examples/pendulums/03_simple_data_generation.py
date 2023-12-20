@@ -7,6 +7,9 @@ from scipy.integrate import solve_ivp
 from matplotlib.animation import FuncAnimation
 
 
+## Set numpy seed for reproducibility
+np.random.seed(40)
+
 
 ##### Generatate data for multiple simple environemnts
 
@@ -42,7 +45,7 @@ environments = [
 # ]
 
 
-n_traj_per_env = 128*10
+n_traj_per_env = 128*30
 n_steps_per_traj = 501
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))

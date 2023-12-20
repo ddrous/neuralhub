@@ -41,26 +41,28 @@ from graphpint.integrators import *
 
 import optax
 from functools import partial
+
+import os
 import time
 # from typing import List, Tuple, Callable
 
 
 #%%
 
-SEED = 25
+SEED = 27
 # SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
 integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 3e-3
+init_lr = 1e-2
 
 ## Training hps
 print_every = 100
-nb_epochs_cal = 100
-nb_epochs = 800
-batch_size = 3*128*2       ## 2 is the number of environments
+nb_epochs_cal = 300
+nb_epochs = 2800
+batch_size = 3*128*30       ## 2 is the number of environments
 
 cutoff = 0.5
 context_size = 2
@@ -69,7 +71,22 @@ train = True
 
 #%%
 
-dataset = np.load('./data/simple_pendulum_big.npz')
+# - make a new folder inside 'data' whose name is the currennt time
+data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
+os.mkdir(data_folder)
+
+# - save the script in that folder
+script_name = os.path.basename(__file__)
+os.system(f"cp {script_name} {data_folder}");
+
+# - save the dataset as well
+dataset_path = "./data/simple_pendulum_big.npz"
+os.system(f"cp {dataset_path} {data_folder}");
+
+
+#%%
+
+dataset = np.load(dataset_path)
 data, t_eval = dataset['X'][:, :, :, :], dataset['t']
 
 nb_envs = data.shape[0]
@@ -421,13 +438,16 @@ def loss_fn_cal(params, static, batch):
 
     # pen_params = params_norm(params.discriminators)
 
+    pen_xis = jnp.mean(xis_hat**2)
+
     xis_hat = xis_hat[jnp.arange(Xs.shape[0]), es_hat]
     # new_xis = meanify_xis(es_hat, xis_hat, jnp.arange(nb_envs))
     new_xis = meanify_xis(jnp.arange(nb_envs), es_hat[:,None], xis_hat, es[:,None], xis)
 
-    loss_val = cross_ent
+    # loss_val = cross_ent
     # loss_val = error_es + 1e-3*pen_params
     # loss_val = cross_ent + 1e-3*pen_params
+    loss_val = cross_ent + pen_xis
 
     return loss_val, (new_xis)
 
@@ -496,7 +516,7 @@ if train == True:
     xis = jax.random.normal(context_key, (nb_envs, context_size))
     init_xis = xis.copy()
 
-    losses = []
+    losses_cal = []
     for epoch in range(nb_epochs_cal):
 
         nb_batches = 0
@@ -514,12 +534,12 @@ if train == True:
             nb_batches += 1
 
         loss_epoch = loss_sum/nb_batches
-        losses.append(loss_epoch)
+        losses_cal.append(loss_epoch)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs_cal-1:
             print(f"    Epoch: {epoch:-5d}      CalibLoss: {loss_epoch:-.8f}", flush=True)
 
-    losses = jnp.vstack(losses)
+    losses_cal = jnp.vstack(losses_cal)
 
     wall_time = time.time() - start_time
     time_in_hmsecs = seconds_to_hours(wall_time)
@@ -538,9 +558,9 @@ import pandas as pd
 import seaborn as sns
 
 if train == True:
-    fig, ax = plt.subplot_mosaic('A;B;B;B', figsize=(6*2, 3.5*4))
+    fig, ax = plt.subplot_mosaic('AA;CD', figsize=(6*2, 4.5*2), width_ratios=[1, 1])
 
-    ax['A'].plot(losses[:], label="Cross-Entropy", color="brown", linewidth=3, alpha=1.0)
+    ax['A'].plot(losses_cal[:], label="Cross-Entropy", color="brown", linewidth=3, alpha=1.0)
     ax['A'].set_xlabel("Epochs")
     ax['A'].set_title("Calibration Loss")
     ax['A'].set_yscale('log')
@@ -549,17 +569,30 @@ if train == True:
     true, pred, cols = test_ste_cal(params, static)
     # ax['B'].scatter(true[:plot_size], pred[:plot_size], c=cols[:plot_size])
 
-    ## Make heatmap sith seaborn
-
     df = pd.DataFrame({'True':true[:], 'Pred':pred[:]})
     df = df.groupby(['True', 'Pred']).size().reset_index(name='Counts')
     df = df.pivot(index='Pred', columns='True', values='Counts')
-    sns.heatmap(df, annot=True, ax=ax['B'], cmap='YlOrBr', cbar=False, fmt="n")
-    ax['B'].set_title("True vs. Pred for all Envs and Discriminators")
-    ax['B'].invert_yaxis()
+    sns.heatmap(df, annot=True, ax=ax['C'], cmap='YlOrBr', cbar=False, fmt="n")
+    ax['C'].set_title("True vs. Pred for all Envs and Discriminators")
+    ax['C'].invert_yaxis()
+
+    xis_all = np.vstack([xis, init_xis])
+    eps = 0.1
+    xmin, xmax = xis_all[:,0].min()-eps, xis_all[:,0].max()+eps
+    ymin, ymax = xis_all[:,1].min()-eps, xis_all[:,1].max()+eps
+    colors = ['dodgerblue', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple', 'brown']
+
+    ax['D'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors[:nb_envs], marker='X', label="Initial", alpha=0.1)
+    ax['D'].scatter(xis[:,0], xis[:,1], s=50, c=colors[:nb_envs], marker='o', label="Final")
+    for i, (x, y) in enumerate(init_xis[:, :2]):
+        ax['D'].annotate(str(i), (x, y), fontsize=8)
+    for i, (x, y) in enumerate(xis[:, :2]):
+        ax['D'].annotate(str(i), (x, y), fontsize=8)
+    ax['D'].set_title(r'Initial and Final Contexts  ($\xi^e$)')
+    ax['D'].legend()
 
     plt.tight_layout()
-    plt.savefig("data/list_gan_node_calibration.png", dpi=300, bbox_inches='tight')
+    plt.savefig(data_folder+"/list_gan_node_calibration_04.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -657,12 +690,18 @@ if train == True:
 
     total_steps = nb_epochs * nb_train_steps_per_epoch
 
-    # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+    # sched = optax.exponential_decay(init_lr, total_steps, decay_rate)     ## It has to finish at 0.001875
+
     # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
     sched = optax.piecewise_constant_schedule(init_value=init_lr,
-                    boundaries_and_scales={int(total_steps*0.25):0.1, 
-                                            int(total_steps*0.5):0.5,
-                                            int(total_steps*0.75):0.2})
+                    # boundaries_and_scales={int(total_steps*0.25):0.5, 
+                    #                         int(total_steps*0.5):0.5,
+                    #                         int(total_steps*0.75):0.5})
+                    # boundaries_and_scales={200:0.5, 
+                    #                         400:0.5,
+                    #                         600:0.5,
+                    #                         1200:0.2})
+                    boundaries_and_scales={1400:0.5})
     opt = optax.adam(sched)
     opt_state = opt.init(params)
 
@@ -725,6 +764,7 @@ if train == True:
 
     model = eqx.combine(params, static)
     eqx.tree_serialise_leaves("data/model_04.eqx", model)
+    eqx.tree_serialise_leaves(data_folder+"model_04.eqx", model)       ## Make a seperate copy for backup
 
 else:
     print("\nNo training, loading model and results from 'data' folder ...\n")
@@ -768,7 +808,7 @@ def test_model(model, batch):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-e = 2
+# e = 1
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 # traj = 1061
 
@@ -833,13 +873,13 @@ ymin, ymax = xis_all[:,1].min()-eps, xis_all[:,1].max()+eps
 colors = ['dodgerblue', 'r', 'b', 'g', 'm', 'c', 'y', 'orange', 'purple', 'brown']
 
 ax['E'].scatter(init_xis[:,0], init_xis[:,1], s=30, c=colors[:nb_envs], marker='X')
-ax['F'].scatter(xis[:,0], xis[:,1], s=30, c=colors[:nb_envs], marker='X')
+ax['F'].scatter(xis[:,0], xis[:,1], s=50, c=colors[:nb_envs], marker='o')
 for i, (x, y) in enumerate(init_xis[:, :2]):
     ax['E'].annotate(str(i), (x, y), fontsize=8)
 for i, (x, y) in enumerate(xis[:, :2]):
     ax['F'].annotate(str(i), (x, y), fontsize=8)
-ax['E'].set_title(r'Initial Contexts ($\xi_e$)')
-ax['F'].set_title(r'Final Contexts')
+ax['E'].set_title(r'Initial Contexts ($\xi^e$)')
+ax['F'].set_title(r'Final Contexts ($\xi^e$)')
 # ax['E'].set_xlim(xmin, xmax)
 # ax['E'].set_ylim(ymin, ymax)
 # ax['F'].set_xlim(xmin, xmax)
@@ -848,7 +888,7 @@ ax['F'].set_title(r'Final Contexts')
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig("data/list_gan_node_04.png", dpi=300, bbox_inches='tight')
+plt.savefig(data_folder+"list_gan_node_04.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 print("Testing finished. Results saved in 'data' folder.\n")
