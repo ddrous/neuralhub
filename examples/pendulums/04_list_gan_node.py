@@ -16,7 +16,7 @@
 import jax
 
 # from jax import config
-jax.config.update("jax_debug_nans", True)
+# jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
 print("\n############# Lotka-Volterra with Generator and Discriminators #############\n")
@@ -61,7 +61,7 @@ init_lr = 3e-2
 ## Training hps
 print_every = 100
 nb_epochs_cal = 300
-nb_epochs = 800
+nb_epochs = 300
 batch_size = 3*128*10       ## 2 is the number of environments
 
 cutoff = 0.5
@@ -83,6 +83,7 @@ os.system(f"cp {script_name} {data_folder}");
 dataset_path = "./data/simple_pendulum_big.npz"
 os.system(f"cp {dataset_path} {data_folder}");
 
+print("Data folder created successfuly:", data_folder)
 
 #%%
 
@@ -96,7 +97,7 @@ data_size = data.shape[3]
 
 cutoff_length = int(cutoff*nb_steps_per_traj)
 
-print("Data and evaluation time shapes:", data.shape, t_eval.shape)
+print("Dataset's elements shapes:", data.shape, t_eval.shape)
 
 # %%
 
@@ -133,12 +134,12 @@ class Augmentation(eqx.Module):
 
 class SharedProcessor(eqx.Module):
     physics: Physics
-    augmentation: Augmentation
+    # augmentation: Augmentation
 
     def __init__(self, data_size, width_size, depth, key=None):
         keys = get_new_key(key, num=2)
         self.physics = Physics(key=keys[0])
-        self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
+        # self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
 
     def __call__(self, t, x):
         # return self.physics(t, x) + self.augmentation(t, x)
@@ -203,7 +204,7 @@ class EnvProcessor(eqx.Module):
     layers_shared: list
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = generate_new_keys(key, num=9)
+        keys = generate_new_keys(key, num=10)
         self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
@@ -212,9 +213,11 @@ class EnvProcessor(eqx.Module):
                         eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
 
-        self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, data_size, key=keys[8])]
+        self.layers_shared = [eqx.nn.Linear(data_size, width_size, key=keys[6]), jax.nn.softplus,
+        # self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
+                        # eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[8]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, data_size, key=keys[9])]
 
 
     def __call__(self, t, x, context):
@@ -225,7 +228,8 @@ class EnvProcessor(eqx.Module):
             y = self.layers_data[i](y)
             context = self.layers_context[i](context)
 
-        y = jnp.concatenate([y, context], axis=0)
+        # y = jnp.concatenate([y, context], axis=0)
+        y = y*context
         for layer in self.layers_shared:
             y = layer(y)
         return y
@@ -262,7 +266,7 @@ class Generator(eqx.Module):
                     t1=t_eval[-1],
                     dt0=t_eval[1] - t_eval[0],
                     y0=x0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+                    stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     max_steps=4096*10,
                 )
@@ -401,7 +405,7 @@ def make_training_batch(batch_id, xis, data, cutoff_length, batch_size, key):   
         xis_batch.append(jnp.ones((nb_trajs_per_batch_per_env, context_size))*xis[e:e+1, :])
         X_batch.append(data[e, traj_start:traj_end, :cutoff_length, :])
 
-    return jnp.concatenate(es_batch), jnp.vstack(xis_batch), jnp.vstack(X_batch), t_eval[:cutoff_length]
+    return (jnp.concatenate(es_batch), jnp.vstack(xis_batch), jnp.vstack(X_batch), t_eval[:cutoff_length]), key
 
 
 
@@ -522,11 +526,12 @@ if train == True:
         nb_batches = 0
         loss_sum = 0
 
-        _, batch_key = get_new_key(batch_key, num=2)
-        batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
+        # _, batch_key = get_new_key(batch_key, num=2)
+        # batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
 
         for i in range(nb_train_steps_per_epoch):   ## Only two trajectories are used for each train_step
-            batch = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_keys[i])
+
+            batch, batch_key = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_key)
         
             params, opt_state, loss, (xis) = train_step_cal(params, static, batch, opt_state)
 
@@ -592,7 +597,7 @@ if train == True:
     ax['D'].legend()
 
     plt.tight_layout()
-    plt.savefig(data_folder+"/list_gan_node_calibration_04.png", dpi=300, bbox_inches='tight')
+    plt.savefig(data_folder+"/list_gan_node_calibration_04.png", dpi=100, bbox_inches='tight')
     plt.show()
 
 
@@ -697,16 +702,16 @@ if train == True:
                     # boundaries_and_scales={int(total_steps*0.25):0.5, 
                     #                         int(total_steps*0.5):0.5,
                     #                         int(total_steps*0.75):0.5})
-                    boundaries_and_scales={200:0.5, 
-                                            400:0.5,
+                    boundaries_and_scales={20:0.5, 
+                                            400:0.95,
                                             600:0.5,
-                                            1200:0.2})
+                                            1200:0.95})
                     # boundaries_and_scales={1400:0.5})
     opt = optax.adam(sched)
     opt_state = opt.init(params)
 
 
-    print(f"\n\n=== Beginning training (of both generators and discriminators)... ===")
+    print(f"\n\n=== Beginning training of generator ... ===")
     print(f"    Number of trajectories used in a single batch per environemnts: {nb_trajs_per_batch_per_env}")
     print(f"    Actual size of a batch (number of examples for all envs): {batch_size}")
     print(f"    Number of train steps per epoch: {nb_train_steps_per_epoch}")
@@ -728,11 +733,11 @@ if train == True:
         loss_sum = jnp.zeros(4)
         nb_steps_eph = 0
 
-        _, batch_key = get_new_key(batch_key, num=2)
-        batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
+        # _, batch_key = get_new_key(batch_key, num=2)
+        # batch_keys = get_new_key(batch_key, num=nb_train_steps_per_epoch)
 
         for i in range(nb_train_steps_per_epoch):   ## Only two trajectories are used for each train_step
-            batch = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_keys[i])
+            batch, key = make_training_batch(i, xis, data, cutoff_length, batch_size, batch_key)
         
             # params, opt_state, loss, (xis, nb_steps_val, term1, term2, term3) = train_step(params, static, batch, opt_state)
             params, opt_state, loss, (nb_steps_val, term1, term3) = train_step(params, static, batch, opt_state)
@@ -888,11 +893,10 @@ ax['F'].set_title(r'Final Contexts ($\xi^e$)')
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig(data_folder+"list_gan_node_04.png", dpi=300, bbox_inches='tight')
+plt.savefig(data_folder+"list_gan_node_04.png", dpi=100, bbox_inches='tight')
 plt.show()
 
-print("Testing finished. Results saved in 'data' folder.\n")
-
+print("Testing finished. Script, data, figures, and models saved in:", data_folder)
 
 # %% [markdown]
 

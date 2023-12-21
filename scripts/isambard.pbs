@@ -20,6 +20,12 @@
 # python 00_data_generation.py > data/nohup.log 2>&1
 
 
+## Steps to follow
+# 1. qsub -I -q ampereq -l select=1:ncpus=16:ngpus=1 -l walltime=4:00:00
+# 2. cd Projects/GraphPinT
+# 3. source venv/bin/activate
+# 4. Enjoy !
+
 source ./venv/bin/activate
 problem_dir="./examples/lotka-voltera/"
 cd "$problem_dir"

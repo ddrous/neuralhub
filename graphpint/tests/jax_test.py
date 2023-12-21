@@ -17,8 +17,8 @@ import time
 # import os
 # os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=32'    ## Trick to virtualise CPU for pmap
 
-print("Jax devices are:", jax.devices())
 print("Jax version:", jax.__version__)
+print("Jax devices are:", jax.devices())
 
 
 @jax.jit
@@ -27,7 +27,7 @@ def f(x):  # function we're benchmarking (works in both NumPy & JAX)
 
 start = time.time()
 for _ in range(1000):
-  x_np = np.ones((10000, 10000), dtype=np.float32)  # same as JAX default dtype
+  x_np = np.ones((1000, 1000), dtype=np.float32)  # same as JAX default dtype
 f(x_np)  # measure NumPy runtime
 
 # x_jax = jax.device_put(x_np)  # measure JAX device transfer time
