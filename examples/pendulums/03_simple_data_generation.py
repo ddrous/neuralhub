@@ -19,33 +19,47 @@ def simple_pendulum(t, state, L, g):
     theta_ddot = -(g / L) * np.sin(theta)
     return [theta_dot, theta_ddot]
 
-environments = [
-    # {"L": 0.5, "g": 9.81},    ## Eearth
-    {"L": 1.0, "g": 9.81},
-    # {"L": 1.5, "g": 9.81},
-    # {"L": 0.5, "g": 24.79},      ## Jupiter
-    {"L": 1.0, "g": 24.79},
-    # {"L": 1.5, "g": 24.79},
-    # {"L": 0.5, "g": 3.72},      ## Mars
-    # {"L": 1.0, "g": 3.72},
-    # {"L": 1.5, "g": 3.72},
-]
+
+nb_envs = 10
+environments = []
+gs = np.linspace(3.72, 940.79, nb_envs)
+for e in range(nb_envs):
+    # L = np.random.uniform(0.5, 1.5)
+    L = 1
+    # g = np.random.uniform(3.72, 240.79)
+    g = gs[e]
+    environments.append({"L": L, "g": g})
+
 
 
 # environments = [
-#     {"L": 0.1, "g": 9.81},    ## Eearth
+#     # {"L": 0.5, "g": 9.81},    ## Eearth
 #     {"L": 1.0, "g": 9.81},
-#     {"L": 10, "g": 9.81},
-#     {"L": 0.1, "g": 24.79},      ## Jupiter
+#     # {"L": 1.5, "g": 9.81},
+#     # {"L": 0.5, "g": 24.79},      ## Jupiter
 #     {"L": 1.0, "g": 24.79},
-#     {"L": 10, "g": 24.79},
-#     {"L": 0.1, "g": 3.72},      ## Mars
-#     {"L": 1.0, "g": 3.72},
-#     {"L": 10, "g": 3.72},
+#     # {"L": 1.5, "g": 24.79},
+#     # {"L": 0.5, "g": 3.72},      ## Mars
+#     # {"L": 1.0, "g": 3.72},
+#     # {"L": 1.5, "g": 3.72},
 # ]
 
 
-n_traj_per_env = 128*10
+
+# # environments = [
+# #     {"L": 0.1, "g": 9.81},    ## Eearth
+# #     {"L": 1.0, "g": 9.81},
+# #     {"L": 10, "g": 9.81},
+# #     {"L": 0.1, "g": 24.79},      ## Jupiter
+# #     {"L": 1.0, "g": 24.79},
+# #     {"L": 10, "g": 24.79},
+# #     {"L": 0.1, "g": 3.72},      ## Mars
+# #     {"L": 1.0, "g": 3.72},
+# #     {"L": 10, "g": 3.72},
+# # ]
+
+
+n_traj_per_env = 8*8*8
 n_steps_per_traj = 201
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
@@ -93,6 +107,6 @@ plt.show()
 # ani.save('data/simple_pen.mp4', writer='ffmpeg')
 
 # Save t_eval and the solution to a npz file
-np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
+np.savez('data/simple_pendulum_envs.npz', t=solution.t, X=data)
 
 
