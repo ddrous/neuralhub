@@ -59,9 +59,9 @@ integrator = rk4_integrator
 init_lr = 3e-2
 
 ## Training hps
-print_every = 100
+print_every = 10
 nb_epochs_cal = 300
-nb_epochs = 300
+nb_epochs = 250
 batch_size = 3*128*10       ## 2 is the number of environments
 
 cutoff = 0.5
@@ -210,7 +210,7 @@ class EnvProcessor(eqx.Module):
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
 
         self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.tanh,
                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
 
         self.layers_shared = [eqx.nn.Linear(data_size, width_size, key=keys[6]), jax.nn.softplus,
@@ -813,7 +813,7 @@ def test_model(model, batch):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-# e = 1
+# e = 0
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 # traj = 1061
 
