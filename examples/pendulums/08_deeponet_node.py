@@ -1,13 +1,8 @@
 
 #%%[markdown]
-# # GAN-Neural ODE framework for generalising the Simple Pendulum
-# List of ToDOs
-# - Use a time series as input to the discriminators, rather than a single point
-# - Put (concatenate) the context back in before each layer of the generator (neural ODE)
-# - Do I let the optimiser maintain its state from the calibration to the training phase ?
+# # DeepO-Neural ODE framework for generalising the Simple Pendulum
 
 ### Summary
-# - why not use one discriminator? because it wouldn't be good for adaptation
 
 
 #%%
@@ -19,17 +14,14 @@ import jax
 # jax.config.update("jax_debug_nans", True)
 # jax.config.update("jax_platform_name", "cpu")
 
-print("\n############# Lotka-Volterra with Generator and Discriminators #############\n")
+print("\n############# Deep)Net and Neural ODEs for Simple Pendulum  #############\n")
 print("Jax version:", jax.__version__)
 print("Available devices:", jax.devices())
 
 import jax.numpy as jnp
-# import jax.scipy as jsp
-# import jax.scipy.optimize
 
 import numpy as np
 np.set_printoptions(suppress=True)
-# from scipy.integrate import solve_ivp
 
 import equinox as eqx
 import diffrax
@@ -44,16 +36,13 @@ from functools import partial
 
 import os
 import time
-# from typing import List, Tuple, Callable
-
 
 #%%
 
 SEED = 27
-# SEED = np.random.randint(0, 1000)
 
 ## Integrator hps
-integrator = rk4_integrator
+# integrator = rk4_integrator
 
 ## Optimiser hps
 init_lr = 3e-2
@@ -116,229 +105,58 @@ class Physics(eqx.Module):
         theta_ddot = -(g / L) * jnp.sin(theta)
         return jnp.array([theta_dot, theta_ddot])
 
-class Augmentation(eqx.Module):
+class MLP(eqx.Module):
     layers: list
 
-    def __init__(self, data_size, width_size, depth, key=None):
-        keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+    def __init__(self, in_size, out_size, width_size, depth, key=None):
+        keys = generate_new_keys(key, num=3)
+        self.layers = [eqx.nn.Linear(in_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, data_size, key=keys[2]) ]
+                        eqx.nn.Linear(width_size, out_size, key=keys[2])]
 
-    def __call__(self, t, x):
-        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+    def __call__(self, x):
         y = x
         for layer in self.layers:
             y = layer(y)
         return y
 
-class SharedProcessor(eqx.Module):
-    physics: Physics
-    # augmentation: Augmentation
-
-    def __init__(self, data_size, width_size, depth, key=None):
-        keys = get_new_key(key, num=2)
-        self.physics = Physics(key=keys[0])
-        # self.augmentation = Augmentation(data_size, width_size, depth, key=keys[1])
-
-    def __call__(self, t, x):
-        # return self.physics(t, x) + self.augmentation(t, x)
-        # return self.augmentation(t, x)
-        return self.physics(t, x)
-
-# class EnvProcessor(eqx.Module):
-#     layers: list
-
-#     def __init__(self, data_size, width_size, depth, context_size, key=None):
-#         keys = get_new_key(key, num=3)
-#         self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-#         # self.layers = [eqx.nn.Linear(context_size, width_size, key=keys[0]), jax.nn.softplus,
-#         # self.layers = [eqx.nn.Linear(data_size+context_size+1, width_size, key=keys[0]), jax.nn.softplus,
-#         # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-#                         # eqx.nn.Linear(width_size, context_size, key=keys[2])]
-#                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
-#         # self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-#         #                 eqx.nn.Linear(width_size+context_size, width_size, key=keys[1]), jax.nn.softplus,
-#         #                 eqx.nn.Linear(width_size+context_size, data_size, key=keys[2])]
-#     def __call__(self, t, x, context):
-#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-#         # y = x
-
-#         # jax.debug.print("\n\n\n\n\n\nx shape {} context {}\n\n\n\n\n\n", x, context)
-#         # jax.debug.breakpoint()
-
-#         y = jnp.concatenate([x, context], axis=0)
-#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x, context], axis=0)
-#         for layer in self.layers:
-#             y = layer(y)
-#         return y
-
-#         # y = x
-#         # for layer in self.layers:
-#         #     y = layer(y)
-#         # return y@jnp.broadcast_to(context[:, None], (context.shape[0], x.shape[0]))
-
-#         # params = context
-#         # for layer in self.layers:
-#         #     params = layer(params)
-#         # L, g = params
-#         # theta, theta_dot = x
-#         # theta_ddot = -(g / L) * jnp.sin(theta)
-#         # return jnp.array([theta_dot, theta_ddot])
-
-
-#         # y = x
-#         # for i, layer in enumerate(self.layers):
-#         #     if i%2==0:
-#         #         y = jnp.concatenate([y, context], axis=-1)
-#         #     y = layer(y)
-#         # return y
-
-
-
-
-# class EnvProcessor(eqx.Module):
-#     layers_data: list
-#     layers_context: list
-#     layers_shared: list
-
-#     def __init__(self, data_size, width_size, depth, context_size, key=None):
-#         keys = generate_new_keys(key, num=10)
-#         self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
-
-#         self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.tanh,
-#                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
-
-#         self.layers_shared = [eqx.nn.Linear(data_size*3, width_size, key=keys[6]), jax.nn.softplus,
-#         # self.layers_shared = [eqx.nn.Linear(data_size+data_size, width_size, key=keys[6]), jax.nn.softplus,
-#                         # eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, width_size, key=keys[8]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, data_size, key=keys[9])]
-
-
-#     def __call__(self, t, x, context):
-
-#         y = x
-#         context = context
-#         for i in range(len(self.layers_data)):
-#             y = self.layers_data[i](y)
-#             context = self.layers_context[i](context)
-
-#         y1 = jnp.concatenate([y, context], axis=0)
-#         y2 = y*context
-#         # y3 = y+context
-#         y =  jnp.concatenate([y1, y2], axis=0)
-#         for layer in self.layers_shared:
-#             y = layer(y)
-#         return y
-
-
-
-class EnvProcessor(eqx.Module):
-    layers_data: list
-    layers_context: list
-
-    def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = generate_new_keys(key, num=10)
-        self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[6]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, context_size*2, key=keys[2])]
-
-        self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, context_size, key=keys[5])]
-
-
-    def __call__(self, t, x, context):
-
-        y = x
-        context = context
-        for i in range(len(self.layers_data)):
-            y = self.layers_data[i](y)
-            context = self.layers_context[i](context)
-
-        y1 = y[:context_size]@context
-        y2 = y[context_size:]@context
-
-        return jnp.array([y1, y2])
-
-
-# def distance(node1, node2):
-#     diff = node1 - node2
-#     return jnp.sum(diff*diff)      ## Squared distance ! No problem for Gaussain RBF
-#     # return jnp.linalg.norm(node1 - node2)       ## Carefull: not differentiable at 0
-
-# def gaussian_rbf(r_squared, shape):
-#     return jnp.exp(-r_squared / ( 2 * shape**2))
-
-# def gaussian_rbf_full(node1, node2, shape):
-#     return gaussian_rbf(distance(node1, node2), shape)
-
-# class EnvProcessor(eqx.Module):
-#     centers: jnp.ndarray
-#     shapes: jnp.ndarray     ## Widths for the gaussian RBF network
-#     weights: eqx.nn.Linear      ## Weights for the decoder to average its outputs
-
-#     def __init__(self, data_size, width_size, depth, context_size, key=None):
-#         in_size = data_size
-#         nb_centers = context_size+width_size
-#         keys = get_new_key(key, num=3)
-
-#         self.centers = jax.random.uniform(keys[0], (nb_centers, in_size), minval=0., maxval=3.)
-#         self.shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
-
-#         self.weights = eqx.nn.Linear(nb_centers, in_size, key=keys[2])
-
-#     def define_mat(self):
-#         rows_func = jax.vmap(gaussian_rbf_full, in_axes=(0, None, 0), out_axes=(0))
-#         mat_func = jax.vmap(rows_func, in_axes=(None, 0, None), out_axes=(0))
-#         return mat_func(self.centers, self.centers, self.shapes)
-
-#     def __call__(self, x):  ## Encode
-#         zeros = jnp.zeros((self.centers.shape[0]-x.shape[0], ))
-#         y = jnp.concatenate([x, zeros], axis=0)
-#         ## Solve the linear system for find the weights
-#         return jnp.linalg.solve(self.define_mat(), y)
-
-#     def decode(self, lamb):
-#         x_full = self.define_mat()@lamb
-#         # return self.weights(x_full)
-#         return x_full
-
-
 
 class Processor(eqx.Module):
-    shared: SharedProcessor
-    env: EnvProcessor
+    physics: Physics
+    branch: MLP      ## of the DeepO-Net
+    trunk: MLP       ## of the DeepO-Net
 
-    def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = get_new_key(key, num=2)
-        self.shared = SharedProcessor(data_size, width_size, depth, key=keys[0])
-        self.env = EnvProcessor(data_size, width_size, depth, context_size, key=keys[1])
+    def __init__(self, m, p, data_size, width_size, depth, key=None):
+        keys = generate_new_keys(key, num=5)
+        self.physics = Physics(key=keys[0])
+        self.branch = MLP(m, p, width_size, depth, key=keys[1])
+        self.trunk = MLP(data_size, p*data_size, width_size, depth, key=keys[2])
 
-    def __call__(self, t, x, context):
-        return self.shared(t, x) + self.env(t, x, context)
+    def __call__(self, t, x, discriminator, trajs):
 
+        bactched_discriminator = jax.vmap(discriminator)
+        trajs = jnp.reshape(trajs, (trajs.shape[0]*trajs.shape[1], -1))
+        input_branch = bactched_discriminator(trajs)
+
+        ps = self.physics(t, x)
+        bs = self.branch(input_branch)
+        ts = self.trunk(x).reshape((x.shape[0], -1))
+
+        return ps + ts@bs
 
 
 class Generator(eqx.Module):
     processor: Processor
 
-    def __init__(self, data_size, width_size, depth, context_size, key=None):
-        self.processor = Processor(data_size, width_size, depth, context_size, key=key)
+    def __init__(self, m, p, data_size, width_size, depth, key=None):
+        self.processor = Processor(m, p, data_size, width_size, depth, key=key)
 
-    def __call__(self, x0, t_eval, context):
+    def __call__(self, x0, t_eval, discriminator, trajs):
 
         solution = diffrax.diffeqsolve(
                     diffrax.ODETerm(self.processor),
                     diffrax.Tsit5(),
-                    args=context,
+                    args=(discriminator, trajs),
                     t0=t_eval[0],
                     t1=t_eval[-1],
                     dt0=t_eval[1] - t_eval[0],
@@ -370,12 +188,6 @@ class Discriminator(eqx.Module):
                         eqx.nn.Linear(50, context_size, key=keys[2]) ]
         self.proba_layers = [eqx.nn.Linear(context_size, 1, key=keys[3]), jax.nn.sigmoid]
 
-        # self.layers = [lambda x:x[None,...], eqx.nn.Conv1d(1, 2, kernel_size=5, key=keys[0]), eqx.nn.MaxPool1d(kernel_size=2), jax.nn.relu,
-        #                 eqx.nn.Conv1d(2, 1, kernel_size=5, key=keys[1]), eqx.nn.MaxPool1d(kernel_size=2), jax.nn.softplus,
-        #                 jnp.ravel, eqx.nn.Linear(90, context_size, key=keys[2]) ]
-        # self.proba_layers = [eqx.nn.Linear(context_size, 1, key=keys[3]), jax.nn.sigmoid]
-
-
     def __call__(self, traj):
         # print("Encoder got and input of size:", traj.size)
         context = traj
@@ -389,15 +201,15 @@ class Discriminator(eqx.Module):
         return proba, context
 
 
-class GANNODE(eqx.Module):
+class DeepONODE(eqx.Module):
     generator: Generator
-    discriminators: list       ## TODO, rather, an ensemble of discriminators. A list might be better ?
-    traj_size: int              ## Based on the above, this shouldn't be needed. TODO: use a time series instead
+    discriminators: list
+    traj_size: int
 
-    def __init__(self, proc_data_size, proc_width_size, proc_depth, context_size, traj_size, nb_envs, key=None):
+    def __init__(self, m, p, proc_data_size, proc_width_size, proc_depth, context_size, traj_size, nb_envs, key=None):
         keys = get_new_key(key, num=1+nb_envs)
 
-        self.generator = Generator(proc_data_size, proc_width_size, proc_depth, context_size, key=keys[1])        
+        self.generator = Generator(m, p, proc_data_size, proc_width_size, proc_depth, context_size, key=keys[1])        
         self.discriminators = [Discriminator(traj_size*proc_data_size, context_size, key=key) for key in keys[1:]]
         
         self.traj_size = traj_size
@@ -413,14 +225,16 @@ class GANNODE(eqx.Module):
             probas.append(proba)
             contexts.append(context)
 
-        return traj, nb_steps, jnp.concatenate(probas), jnp.vstack(contexts)         ## TODO: even tho all contexts are returned, only the corresponding ones should be used for the loss
+        return traj, nb_steps, jnp.concatenate(probas), jnp.vstack(contexts)
 
 
 # %%
 
 model_key, training_key, testing_key = get_new_key(SEED, num=3)
 
-model = GANNODE(proc_data_size=2, 
+model = DeepONODE(m=nb_envs,            ## TODO Only the first trajectories in each env will be used to train the DeepONet
+                p=200,
+                proc_data_size=2, 
                 proc_width_size=16*2, 
                 proc_depth=3, 
                 context_size=context_size, 
@@ -429,6 +243,9 @@ model = GANNODE(proc_data_size=2,
                 key=model_key)
 
 params, static = eqx.partition(model, eqx.is_array)
+
+
+
 
 
 

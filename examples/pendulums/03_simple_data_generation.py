@@ -27,7 +27,7 @@ environments = [
     {"L": 1.0, "g": 24.79},
     # {"L": 1.5, "g": 24.79},
     # {"L": 0.5, "g": 3.72},      ## Mars
-    {"L": 1.0, "g": 3.72},
+    # {"L": 1.0, "g": 3.72},
     # {"L": 1.5, "g": 3.72},
 ]
 
@@ -46,7 +46,7 @@ environments = [
 
 
 n_traj_per_env = 128*10
-n_steps_per_traj = 501
+n_steps_per_traj = 201
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
 
