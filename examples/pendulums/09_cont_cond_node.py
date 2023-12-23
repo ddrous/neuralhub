@@ -1,7 +1,6 @@
 
 #%%[markdown]
 # # Continuous Conditional framework for generalising the Simple Pendulum
-
 ### Summary
 
 

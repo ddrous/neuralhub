@@ -20,29 +20,29 @@ def simple_pendulum(t, state, L, g):
     return [theta_dot, theta_ddot]
 
 
-# nb_envs = 10
-# environments = []
-# gs = np.linspace(3.72, 940.79, nb_envs)
-# for e in range(nb_envs):
-#     # L = np.random.uniform(0.5, 1.5)
-#     L = 1
-#     # g = np.random.uniform(3.72, 240.79)
-#     g = gs[e]
-#     environments.append({"L": L, "g": g})
+nb_envs = 6
+environments = []
+gs = np.linspace(3, 25, nb_envs)
+for e in range(nb_envs):
+    # L = np.random.uniform(0.5, 1.5)
+    L = 1
+    # g = np.random.uniform(3.72, 240.79)
+    g = gs[e]
+    environments.append({"L": L, "g": g})
 
 
 
-environments = [
-    # {"L": 0.5, "g": 9.81},    ## Eearth
-    {"L": 1.0, "g": 9.81},
-    # {"L": 1.5, "g": 9.81},
-    # {"L": 0.5, "g": 24.79},      ## Jupiter
-    {"L": 1.0, "g": 24.79},
-    # {"L": 1.5, "g": 24.79},
-    # {"L": 0.5, "g": 3.72},      ## Mars
-    # {"L": 1.0, "g": 3.72},
-    # {"L": 1.5, "g": 3.72},
-]
+# environments = [
+#     {"L": 0.5, "g": 9.81},    ## Eearth
+#     {"L": 1.0, "g": 9.81},
+#     # {"L": 1.5, "g": 9.81},
+#     {"L": 0.5, "g": 24.79},      ## Jupiter
+#     {"L": 1.0, "g": 24.79},
+#     # {"L": 1.5, "g": 24.79},
+#     {"L": 0.5, "g": 3.72},      ## Mars
+#     {"L": 1.0, "g": 3.72},
+#     # {"L": 1.5, "g": 3.72},
+# ]
 
 
 
