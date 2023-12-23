@@ -56,7 +56,7 @@ init_lr = 3e-3
 ## Training hps
 print_every = 100
 nb_epochs = 5000
-batch_size = 128*4
+batch_size = 2**6
 
 cutoff = 0.6
 context_size = 2
