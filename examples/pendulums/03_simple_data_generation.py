@@ -59,7 +59,7 @@ for e in range(nb_envs):
 # # ]
 
 
-n_traj_per_env = 128*8
+n_traj_per_env = 128*16
 n_steps_per_traj = 201
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))

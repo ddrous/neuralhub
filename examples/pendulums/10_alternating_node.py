@@ -51,15 +51,15 @@ SEED = 27
 # integrator = rk4_integrator
 
 ## Optimiser hps
-init_lr = 1e-3
+init_lr = 3e-3
 
 ## Training hps
 print_every = 100
 nb_epochs = 5000
-batch_size = 128*8
+batch_size = 128*4
 
-cutoff = 0.4
-context_size = 20
+cutoff = 0.6
+context_size = 2
 
 train = True
 
@@ -144,13 +144,15 @@ class Augmentation(eqx.Module):
     layers_shared: list
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
-        keys = generate_new_keys(key, num=10)
+        keys = generate_new_keys(key, num=12)
         self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size, width_size, key=keys[10]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
 
-        self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.tanh,
+        self.layers_context = [eqx.nn.Linear(context_size, width_size*2, key=keys[3]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size*2, width_size*2, key=keys[11]), jax.nn.softplus,
+                        eqx.nn.Linear(width_size*2, width_size, key=keys[4]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
 
         self.layers_shared = [eqx.nn.Linear(data_size*2, width_size, key=keys[6]), jax.nn.softplus,
@@ -322,17 +324,19 @@ if train == True:
     total_steps = nb_epochs * nb_train_steps_per_epoch
 
     sched_node = optax.piecewise_constant_schedule(init_value=init_lr,
-                            boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                                    int(total_steps*0.5):0.5,
-                                                    int(total_steps*0.75):0.5})
+                            boundaries_and_scales={200:1.0,
+                                                    int(total_steps*0.25):0.25, 
+                                                    int(total_steps*0.5):0.25,
+                                                    int(total_steps*0.75):0.25})
 
     opt_node = optax.adam(sched_node)
     opt_state_node = opt_node.init(params)
 
     sched_cont = optax.piecewise_constant_schedule(init_value=init_lr,
-                            boundaries_and_scales={int(total_steps*0.25):0.5, 
-                                                    int(total_steps*0.5):0.5,
-                                                    int(total_steps*0.75):0.5})
+                            boundaries_and_scales={200:1.0,
+                                                    int(total_steps*0.25):0.25, 
+                                                    int(total_steps*0.5):0.25,
+                                                    int(total_steps*0.75):0.25})
 
     opt_cont = optax.adam(sched_cont)
     opt_state_cont = opt_node.init(context)
@@ -364,13 +368,18 @@ if train == True:
 
             params, context, opt_state_node, loss_node, (nb_steps_val_node, term1, term2) = train_step_node(params, static, context, batch, opt_state_node)
 
+            loss_sum_node += jnp.array([loss_node])
+            nb_steps_eph_node += nb_steps_val_node
+            nb_batches += 1
+
+        for i in range(nb_train_steps_per_epoch):
+            batch, batch_key = make_training_batch(i, data, cutoff_length, batch_size, batch_key)
+
             if i%1==0:
                 params, context, opt_state_cont, loss_cont, (nb_steps_val_cont, term1, term2) = train_step_cont(params, static, context, batch, opt_state_cont)
                 # loss_cont, nb_steps_val_cont = 0., 1.           ## TODO - Mark
 
-            loss_sum_node += jnp.array([loss_node])
             loss_sum_cont += jnp.array([loss_cont])
-            nb_steps_eph_node += nb_steps_val_node
             nb_steps_eph_cont += nb_steps_val_cont
             nb_batches += 1
 
