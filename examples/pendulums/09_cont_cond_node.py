@@ -52,7 +52,7 @@ init_lr = 3e-2
 
 ## Training hps
 print_every = 100
-nb_epochs = 100
+nb_epochs = 1000
 batch_size = 128*8
 
 cutoff = 0.4
@@ -110,17 +110,53 @@ class Physics(eqx.Module):
 class Augmentation(eqx.Module):
     layers: list
 
-    def __init__(self, in_size, out_size, width_size, depth, key=None):
+    def __init__(self, data_size, width_size, depth, context_size, key=None):
         keys = generate_new_keys(key, num=3)
-        self.layers = [eqx.nn.Linear(in_size, width_size, key=keys[0]), jax.nn.softplus,
+        self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-                        eqx.nn.Linear(width_size, out_size, key=keys[2])]
+                        eqx.nn.Linear(width_size, data_size, key=keys[2])]
 
     def __call__(self, t, x, context):
         y = jnp.concatenate([x, context], axis=0)
         for layer in self.layers:
             y = layer(y)
         return y
+
+
+# class Augmentation(eqx.Module):
+#     layers_data: list
+#     layers_context: list
+#     layers_shared: list
+
+#     def __init__(self, data_size, width_size, depth, context_size, key=None):
+#         keys = generate_new_keys(key, num=10)
+#         self.layers_data = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
+
+#         self.layers_context = [eqx.nn.Linear(context_size, width_size, key=keys[3]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[4]), jax.nn.tanh,
+#                         eqx.nn.Linear(width_size, data_size, key=keys[5])]
+
+#         self.layers_shared = [eqx.nn.Linear(data_size*3, width_size, key=keys[6]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[7]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, width_size, key=keys[8]), jax.nn.softplus,
+#                         eqx.nn.Linear(width_size, data_size, key=keys[9])]
+
+
+#     def __call__(self, t, x, context):
+
+#         y = x
+#         context = context
+#         for i in range(len(self.layers_data)):
+#             y = self.layers_data[i](y)
+#             context = self.layers_context[i](context)
+
+#         y = jnp.concatenate([y, context, y*context], axis=0)
+#         for layer in self.layers_shared:
+#             y = layer(y)
+#         return y
+
 
 
 class Processor(eqx.Module):
@@ -131,12 +167,13 @@ class Processor(eqx.Module):
     def __init__(self, data_size, width_size, depth, context_size, key=None):
         keys = generate_new_keys(key, num=5)
         self.physics = Physics(key=keys[0])
-        self.envnet = Augmentation(data_size+context_size, data_size, width_size, depth, key=keys[1])
+        # self.envnet = Augmentation(data_size, data_size, width_size, depth, context_size, key=keys[1])
+        self.envnet = Augmentation(data_size, width_size, depth, context_size, key=keys[1])
         self.context = jax.random.normal(keys[2], (context_size,))
 
     def __call__(self, t, x, args):
-        # return self.physics(t, x) + self.envnet(t, x, self.context)
-        return self.physics(t, x) + self.envnet(t, x, jnp.zeros_like(self.context)) 
+        return self.physics(t, x) + self.envnet(t, x, self.context)
+        # return self.physics(t, x) + self.envnet(t, x, jnp.zeros_like(self.context)) 
 
 
 class NeuralODE(eqx.Module):
@@ -373,6 +410,7 @@ def test_model(model, batch, context):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
+e=1
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 
 # test_length = cutoff_length
