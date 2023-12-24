@@ -1,16 +1,29 @@
 
 #%%[markdown]
-# # Alternating update of context for generalising the Simple Pendulum
+## Alternating Neural ODE and Context Updates for Generalising the Simple Pendulum
 
 ### Summary
-# - the context is ocntinuous, and it updates at every step after the neural ode
-# - keep track of a loss per env
-# - the context is its own network
+# - the context is continuous, and it updates at every step after the neural ode
+# - we can keep track of a loss per env, which will prove useful
 
-### Summary
-# - save to dedicated folder
-# - plot the initial contexts
-# - if no train, then I must be given a folder to load from
+### Findings
+# - no need for large context sizes, 2 is enough
+# - the network tends to learn the latter environments better
+# - don't overcut the learning rate midway
+# - the data increases with the number of environments, and the init lr decreases
+# - a huge cutoff leads to instability in the training (a jump in the loss), and potential blowup 
+
+### To Do
+# - initial the contexts with the discriminators (from a seperate script)
+# - learn the mapping from discriminator context to gd context
+# - implement the adaptation stage: use the learned mapping, then fine tune
+# - look at the loss per env, and dynamically penalyse the total loss (as weighted sum of the env losses). work this out mathematicaly
+# - compare everything with LEADS, CoDA, etc.
+
+## Future Work
+# - optimal control of the transferable dynamics
+# - add in some probabilistic inference (Turing scheme)
+
 
 #%%
 
@@ -55,10 +68,10 @@ init_lr = 3e-3
 
 ## Training hps
 print_every = 100
-nb_epochs = 5000
-batch_size = 2**6
+nb_epochs = 1000
+batch_size = 128*24
 
-cutoff = 0.6
+cutoff = 0.2
 context_size = 2
 
 train = True
@@ -188,6 +201,7 @@ class Processor(eqx.Module):
 
     def __call__(self, t, x, context):
         return self.physics(t, x) + self.envnet(t, x, context)
+        # return self.envnet(t, x, context)
 
 
 class NeuralODE(eqx.Module):
@@ -286,6 +300,7 @@ def loss_fn(params, static, context, batch):
         term1 = l2_norm(Xs_e, Xs_hat_e)
         term2 = params_norm(params.processor.envnet)
         loss_val = term1 + 1e-3*term2
+        # loss_val = term1
         return loss_val, (jnp.sum(nb_steps), term1, term2)
 
     all_loss, (all_nb_steps, all_term1, all_term2) = jax.vmap(loss_for_one_env, in_axes=(0, 0))(Xs[:, :, :, :], context.params)
@@ -368,16 +383,18 @@ if train == True:
 
             params, context, opt_state_node, loss_node, (nb_steps_val_node, term1, term2) = train_step_node(params, static, context, batch, opt_state_node)
 
-            loss_sum_node += jnp.array([loss_node])
-            nb_steps_eph_node += nb_steps_val_node
-            nb_batches += 1
 
-        for i in range(nb_train_steps_per_epoch):
-            batch, batch_key = make_training_batch(i, data, cutoff_length, batch_size, batch_key)
+            # nb_batches += 1
+
+        # for i in range(nb_train_steps_per_epoch):
+        #     batch, batch_key = make_training_batch(i, data, cutoff_length, batch_size, batch_key)
 
             if i%1==0:
                 params, context, opt_state_cont, loss_cont, (nb_steps_val_cont, term1, term2) = train_step_cont(params, static, context, batch, opt_state_cont)
                 # loss_cont, nb_steps_val_cont = 0., 1.           ## TODO - Mark
+
+            loss_sum_node += jnp.array([loss_node])
+            nb_steps_eph_node += nb_steps_val_node
 
             loss_sum_cont += jnp.array([loss_cont])
             nb_steps_eph_cont += nb_steps_val_cont
