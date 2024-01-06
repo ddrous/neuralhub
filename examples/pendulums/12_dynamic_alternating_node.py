@@ -341,6 +341,7 @@ def train_step_cont(params, static, context, batch, weights, opt_state):
 if train == True:
 
     nb_train_steps_per_epoch = nb_trajs_per_env // batch_size
+    assert nb_train_steps_per_epoch > 0, "Not enough data for a single epoch"
     total_steps = nb_epochs * nb_train_steps_per_epoch
 
     sched_node = optax.piecewise_constant_schedule(init_value=init_lr,
@@ -359,7 +360,7 @@ if train == True:
                                                     int(total_steps*0.75):0.25})
 
     opt_cont = optax.adam(sched_cont)
-    opt_state_cont = opt_node.init(context)
+    opt_state_cont = opt_cont.init(context)
 
     print(f"\n\n=== Beginning training neural ODE ... ===")
     print(f"    Number of examples in a batch: {batch_size}")
@@ -481,7 +482,7 @@ def test_model(model, batch, context):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-e=0
+# e=0
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 
 # test_length = cutoff_length

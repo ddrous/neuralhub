@@ -20,6 +20,7 @@ print("Available devices:", jax.devices())
 import jax.numpy as jnp
 
 import numpy as np
+from scipy.integrate import solve_ivp
 np.set_printoptions(suppress=True)
 
 import equinox as eqx
@@ -49,7 +50,7 @@ init_lr = 3e-3
 ## Training hps
 print_every = 100
 nb_epochs = 1000
-batch_size = 128*24
+batch_size = 16*8
 
 cutoff = 0.2
 context_size = 2
@@ -73,7 +74,6 @@ if train == True:
 
     # - save the dataset as well
     # dataset_path = "./data/simple_pendulum_big.npz"
-    dataset_path = data_folder+"simple_pendulum_big.npz"
     # os.system(f"cp {dataset_path} {data_folder}");
 
     print("Data folder created successfuly:", data_folder)
@@ -81,180 +81,7 @@ if train == True:
 else:
     # data_folder = "12AlternatingWorks"
     data_folder = "./data/23122023-121748/"
-    dataset_path = data_folder+"simple_pendulum_big.npz"
     print("No training. Loading data and results from:", data_folder)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# %%
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
-from matplotlib.animation import FuncAnimation
-
-
-## Set numpy seed for reproducibility
-np.random.seed(5)
-
-
-##### Generatate data for multiple simple environemnts
-
-
-def simple_pendulum(t, state, L, g):
-    theta, theta_dot = state
-    theta_ddot = -(g / L) * np.sin(theta)
-    return [theta_dot, theta_ddot]
-
-
-nb_envs = 12
-environments = []
-gs = np.linspace(3, 25, nb_envs)
-for e in range(nb_envs):
-    # L = np.random.uniform(0.5, 1.5)
-    L = 1
-    # g = np.random.uniform(3.72, 240.79)
-    g = gs[e]
-    environments.append({"L": L, "g": g})
-
-
-
-# environments = [
-#     {"L": 0.5, "g": 9.81},    ## Eearth
-#     {"L": 1.0, "g": 9.81},
-#     # {"L": 1.5, "g": 9.81},
-#     {"L": 0.5, "g": 24.79},      ## Jupiter
-#     {"L": 1.0, "g": 24.79},
-#     # {"L": 1.5, "g": 24.79},
-#     {"L": 0.5, "g": 3.72},      ## Mars
-#     {"L": 1.0, "g": 3.72},
-#     # {"L": 1.5, "g": 3.72},
-# ]
-
-
-
-# # environments = [
-# #     {"L": 0.1, "g": 9.81},    ## Eearth
-# #     {"L": 1.0, "g": 9.81},
-# #     {"L": 10, "g": 9.81},
-# #     {"L": 0.1, "g": 24.79},      ## Jupiter
-# #     {"L": 1.0, "g": 24.79},
-# #     {"L": 10, "g": 24.79},
-# #     {"L": 0.1, "g": 3.72},      ## Mars
-# #     {"L": 1.0, "g": 3.72},
-# #     {"L": 10, "g": 3.72},
-# # ]
-
-
-n_traj_per_env = 128*24
-n_steps_per_traj = 201
-
-data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
-
-t_span = (0, 10)  # Shortened time span
-t_eval = np.linspace(t_span[0], t_span[-1], n_steps_per_traj)  # Fewer frames
-
-for j in range(n_traj_per_env):
-    # Initial conditions (prey and predator concentrations)
-    initial_state = np.concatenate([np.random.uniform(-np.pi/2, np.pi/2, size=(1,)), 
-    # initial_state = np.concatenate([np.array([-np.pi/2]), 
-                                    np.random.uniform(-1, 1, size=(1,))])
-                                    # np.array([-1])])
-
-    for i, selected_params in enumerate(environments):
-        # print("Environment", i)
-
-        # Solve the ODEs using SciPy's solve_ivp
-        solution = solve_ivp(simple_pendulum, t_span, initial_state, args=(selected_params['L'], selected_params['g']), t_eval=t_eval)
-
-        data[i, j, :, :] = solution.y.T
-
-# Extract the solution
-theta, theta_dot = solution.y
-
-# Create an animation of the pendulum's motion
-fig, ax = plt.subplots(figsize=(13, 5))
-ax.set_xlim(-2.1, 2.1)
-ax.set_ylim(-1.4, 0.25)
-
-pendulum, = ax.plot([], [], 'ro-', lw=2)
-time_template = 'Time = %.1fs'
-time_text = ax.text(0.05, 0.9, '', transform=ax.transAxes)
-
-def animate(i):
-    x = [0, selected_params['L'] * np.sin(theta[i])]
-    y = [0, -selected_params['L'] * np.cos(theta[i])]
-    pendulum.set_data(x, y)
-    time_text.set_text(time_template % solution.t[i])
-    return pendulum, time_text
-
-ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=10, repeat=True, blit=True)
-plt.show()
-
-# ani.save('data/simple_pen.mp4', writer='ffmpeg')
-
-# Save t_eval and the solution to a npz file
-np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -266,15 +93,56 @@ np.savez('data/simple_pendulum_big.npz', t=solution.t, X=data)
 
 #%%
 
-dataset = np.load(dataset_path)
-data, t_eval = dataset['X'][:, :, :, :], dataset['t']
 
-nb_envs = data.shape[0]
+
+def simple_pendulum(t, state, L, g):
+    theta, theta_dot = state
+    theta_ddot = -(g / L) * np.sin(theta)
+    return [theta_dot, theta_ddot]
+
+
+nb_envs = 1
+environments = []
+
+# adapt_key = get_new_key(SEED, num=1)
+adapt_key = get_new_key(time.time_ns(), num=1)
+
+# adapt_key = jnp.array([1486095591, 2923071726], dtype=jnp.uint32)
+
+gs = jax.random.uniform(key=adapt_key, minval=1, maxval=28, shape=(nb_envs,))
+gs = np.array(gs)
+
+for e in range(nb_envs):
+    L = 1
+    g = gs[e]
+    environments.append({"L": L, "g": g})
+
+n_traj_per_env = 16*8
+n_steps_per_traj = 201
+
+data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
+
+t_span = (0, 10)  # Shortened time span
+t_eval = np.linspace(t_span[0], t_span[-1], n_steps_per_traj)  # Fewer frames
+
+for j in range(n_traj_per_env):
+    initial_state = np.concatenate([np.random.uniform(-np.pi/2, np.pi/2, size=(1,)), 
+                                    np.random.uniform(-1, 1, size=(1,))])
+
+    for i, selected_params in enumerate(environments):
+        solution = solve_ivp(simple_pendulum, t_span, initial_state, args=(selected_params['L'], selected_params['g']), t_eval=t_eval)
+
+        data[i, j, :, :] = solution.y.T
+
 nb_trajs_per_env = data.shape[1]
 nb_steps_per_traj = data.shape[2]
 data_size = data.shape[3]
 
 cutoff_length = int(cutoff*nb_steps_per_traj)
+
+
+print("Number of adaptation environments:", nb_envs)
+print("Parameter in new environment:", gs)
 
 print("Dataset's elements shapes:", data.shape, t_eval.shape)
 
@@ -294,24 +162,6 @@ class Physics(eqx.Module):
         theta, theta_dot = x
         theta_ddot = -(g / L) * jnp.sin(theta)
         return jnp.array([theta_dot, theta_ddot])
-
-# class Augmentation(eqx.Module):
-#     layers: list
-
-#     def __init__(self, data_size, width_size, depth, context_size, key=None):
-#         keys = generate_new_keys(key, num=3)
-#         self.layers = [eqx.nn.Linear(data_size+context_size, width_size, key=keys[0]), jax.nn.softplus,
-#         # self.layers = [eqx.nn.Linear(data_size, width_size, key=keys[0]), jax.nn.softplus,                  ## TODO- Mark
-#                         eqx.nn.Linear(width_size, width_size, key=keys[1]), jax.nn.softplus,
-#                         eqx.nn.Linear(width_size, data_size, key=keys[2])]
-
-#     def __call__(self, t, x, context):
-#         y = jnp.concatenate([x, context], axis=0)             ## TODO- Mark
-#         # y = x
-#         for layer in self.layers:
-#             y = layer(y)
-#         return y
-
 
 class Augmentation(eqx.Module):
     layers_data: list
@@ -414,11 +264,12 @@ model = NeuralODE(data_size=2,
                 context_size=context_size, 
                 key=model_key)
 
+model = eqx.tree_deserialise_leaves(data_folder+"model.eqx", model)
 params, static = eqx.partition(model, eqx.is_array)
 
 context = Context(nb_envs, context_size, key=context_key)
 init_xis = context.params.copy()
-
+# print(context.params)
 
 
 
@@ -473,16 +324,16 @@ def loss_fn(params, static, context, batch, weights):
     return jnp.sum(all_loss*weights), (jnp.sum(all_nb_steps), all_term1, all_term2)     ## TODO Return non-reduced aux data
 
 
-@partial(jax.jit, static_argnums=(1))
-def train_step_node(params, static, context, batch, weights, opt_state):
-    print('\nCompiling function "train_step" for neural ode ...\n')
+# @partial(jax.jit, static_argnums=(1))
+# def train_step_node(params, static, context, batch, weights, opt_state):
+#     print('\nCompiling function "train_step" for neural ode ...\n')
 
-    (loss, aux_data), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, static, context, batch, weights)
+#     (loss, aux_data), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, static, context, batch, weights)
 
-    updates, opt_state = opt_node.update(grads, opt_state)
-    params = optax.apply_updates(params, updates)
+#     updates, opt_state = opt_node.update(grads, opt_state)
+#     params = optax.apply_updates(params, updates)
 
-    return params, context, opt_state, loss, aux_data
+#     return params, context, opt_state, loss, aux_data
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -490,6 +341,8 @@ def train_step_cont(params, static, context, batch, weights, opt_state):
     print('\nCompiling function "train_step" for the context ...\n')
 
     (loss, aux_data), grads = jax.value_and_grad(loss_fn, argnums=2, has_aux=True)(params, static, context, batch, weights)
+
+    # jax.debug.print("\n\n\n loss {}", loss)
 
     updates, opt_state = opt_cont.update(grads, opt_state)
     context = optax.apply_updates(context, updates)
@@ -500,17 +353,18 @@ def train_step_cont(params, static, context, batch, weights, opt_state):
 
 if train == True:
 
-    nb_train_steps_per_epoch = nb_trajs_per_env // batch_size
+    nb_train_steps_per_epoch = np.ceil(n_traj_per_env/batch_size).astype(int)
+    assert nb_train_steps_per_epoch > 0, "Not enough data for a single epoch"
     total_steps = nb_epochs * nb_train_steps_per_epoch
 
-    sched_node = optax.piecewise_constant_schedule(init_value=init_lr,
-                            boundaries_and_scales={200:1.0,
-                                                    int(total_steps*0.25):0.25, 
-                                                    int(total_steps*0.5):0.25,
-                                                    int(total_steps*0.75):0.25})
+    # sched_node = optax.piecewise_constant_schedule(init_value=init_lr,
+    #                         boundaries_and_scales={200:1.0,
+    #                                                 int(total_steps*0.25):0.25, 
+    #                                                 int(total_steps*0.5):0.25,
+    #                                                 int(total_steps*0.75):0.25})
 
-    opt_node = optax.adam(sched_node)
-    opt_state_node = opt_node.init(params)
+    # opt_node = optax.adam(sched_node)
+    # opt_state_node = opt_node.init(params)
 
     sched_cont = optax.piecewise_constant_schedule(init_value=init_lr,
                             boundaries_and_scales={200:1.0,
@@ -519,7 +373,7 @@ if train == True:
                                                     int(total_steps*0.75):0.25})
 
     opt_cont = optax.adam(sched_cont)
-    opt_state_cont = opt_node.init(context)
+    opt_state_cont = opt_cont.init(context)
 
     print(f"\n\n=== Beginning training neural ODE ... ===")
     print(f"    Number of examples in a batch: {batch_size}")
@@ -529,9 +383,9 @@ if train == True:
 
     start_time = time.time()
 
-    losses_node = []
+    # losses_node = []
     losses_cont = []
-    nb_steps_node = []
+    # nb_steps_node = []
     nb_steps_cont = []
 
     _, batch_key = get_new_key(training_key, num=2)
@@ -540,18 +394,17 @@ if train == True:
 
     for epoch in range(nb_epochs):
         nb_batches = 0
-        loss_sum_node = jnp.zeros(1)
+        # loss_sum_node = jnp.zeros(1)
         loss_sum_cont = jnp.zeros(1)
-        nb_steps_eph_node = 0
+        # nb_steps_eph_node = 0
         nb_steps_eph_cont = 0
 
         for i in range(nb_train_steps_per_epoch):
             batch, batch_key = make_training_batch(i, data, cutoff_length, batch_size, batch_key)
 
-            params, context, opt_state_node, loss_node, (nb_steps_val_node, term1, term2) = train_step_node(params, static, context, batch, weights, opt_state_node)
+            # params, context, opt_state_node, loss_node, (nb_steps_val_node, term1, term2) = train_step_node(params, static, context, batch, weights, opt_state_node)
 
-
-            weights = term1 / jnp.sum(term1)
+            # weights = term1 / jnp.sum(term1)
 
             # nb_batches += 1
 
@@ -566,26 +419,26 @@ if train == True:
             term1 = term1 + 1e-8
             weights = term1 / jnp.sum(term1)
 
-            loss_sum_node += jnp.array([loss_node])
-            nb_steps_eph_node += nb_steps_val_node
+            # loss_sum_node += jnp.array([loss_node])
+            # nb_steps_eph_node += nb_steps_val_node
 
             loss_sum_cont += jnp.array([loss_cont])
             nb_steps_eph_cont += nb_steps_val_cont
             nb_batches += 1
 
-        loss_epoch_node = loss_sum_node/nb_batches
+        # loss_epoch_node = loss_sum_node/nb_batches
         loss_epoch_cont = loss_sum_cont/nb_batches
-        losses_node.append(loss_epoch_node)
+        # losses_node.append(loss_epoch_node)
         losses_cont.append(loss_epoch_cont)
-        nb_steps_node.append(nb_steps_eph_node)
+        # nb_steps_node.append(nb_steps_eph_node)
         nb_steps_cont.append(nb_steps_eph_cont)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-            print(f"    Epoch: {epoch:-5d}      LossNeuralODE: {loss_epoch_node[0]:-.8f}     LossContext: {loss_epoch_cont[0]:-.8f}", flush=True)
+            print(f"    Epoch: {epoch:-5d}     LossContext: {loss_epoch_cont[0]:-.8f}", flush=True)
 
-    losses_node = jnp.vstack(losses_node)
+    # losses_node = jnp.vstack(losses_node)
     losses_cont = jnp.vstack(losses_cont)
-    nb_steps_node = jnp.array(nb_steps_node)
+    # nb_steps_node = jnp.array(nb_steps_node)
     nb_steps_cont = jnp.array(nb_steps_cont)
 
 
@@ -593,29 +446,26 @@ if train == True:
     time_in_hmsecs = seconds_to_hours(wall_time)
     print("\nTotal gradient descent training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
-    np.savez(data_folder+"histories.npz", losses_node=losses_node, losses_cont=losses_cont, nb_steps_node=nb_steps_node, nb_steps_cont=nb_steps_cont)
+    # np.savez(data_folder+"histories.npz", losses_node=losses_node, losses_cont=losses_cont, nb_steps_node=nb_steps_node, nb_steps_cont=nb_steps_cont)
+    np.savez(data_folder+"histories_adapt.npz", losses_cont=losses_cont, nb_steps_cont=nb_steps_cont)
 
     model = eqx.combine(params, static)
-    eqx.tree_serialise_leaves(data_folder+"model.eqx", model)
-    eqx.tree_serialise_leaves(data_folder+"context.eqx", context)
+    # eqx.tree_serialise_leaves(data_folder+"model_adapt.eqx", model)
+    eqx.tree_serialise_leaves(data_folder+"context_adapt.eqx", context)
 
 else:
     print("\nNo training, loading model and results from 'data' folder ...\n")
 
-    histories = np.load(data_folder+"histories.npz")
-    losses_node = histories['losses_node']
+    histories = np.load(data_folder+"histories_adapt.npz")
     losses_cont = histories['losses_cont']
-    nb_steps_node = histories['nb_steps_node']
     nb_steps_cont = histories['nb_steps_cont']
 
     model = eqx.combine(params, static)
-    model = eqx.tree_deserialise_leaves(data_folder+"model.eqx", model)
-    context = eqx.tree_deserialise_leaves(data_folder+"context.eqx", context)
+    # model = eqx.tree_deserialise_leaves(data_folder+"model_adapt.eqx", model)
+    context = eqx.tree_deserialise_leaves(data_folder+"context_adapt.eqx", context)
 
-
-
-
-
+alter_histories = np.load(data_folder+"histories.npz")
+losses_node = alter_histories['losses_node']
 
 
 
@@ -641,7 +491,7 @@ def test_model(model, batch, context):
 e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
-e=0
+# e=0
 traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
 
 # test_length = cutoff_length
@@ -655,6 +505,8 @@ print("    Trajectory id:", traj)
 print("    Length of the original trajectories:", nb_steps_per_traj)
 print("    Length of the training trajectories:", cutoff_length)
 print("    Length of the testing trajectories:", test_length)
+
+# print(context.params)
 
 X_hat = test_model(model, (X, t_test), context.params[e])
 
@@ -680,13 +532,14 @@ ax['B'].set_ylabel(r"$\dot \theta$")
 ax['B'].set_title("Phase space")
 ax['B'].legend()
 
-nb_steps = nb_steps_node
+nb_steps = nb_steps_cont
 xis = context.params
 
-mke = np.ceil(losses_node.shape[0]/100).astype(int)
+mke = np.ceil(losses_cont.shape[0]/100).astype(int)
 
-ax['C'].plot(losses_node[:,0], label="NodeLoss", color="grey", linewidth=3, alpha=1.0)
-ax['C'].plot(losses_cont[:,0], "x-", markevery=mke, markersize=mks, label="ContextLoss", color="grey", linewidth=1, alpha=0.5)
+# ax['C'].plot(losses_node[:,0], label="NodeLoss - During Alternating Updates", color="grey", linewidth=3, alpha=1.0)
+ax['C'].plot(losses_cont[:,0], label="NodeLoss - During Context-only Update", color="grey", linewidth=3, alpha=1.0)
+# ax['C'].plot(losses_cont[:,0], "x-", markevery=mke, markersize=mks, label="ContextLoss", color="grey", linewidth=1, alpha=0.5)
 ax['C'].set_xlabel("Epochs")
 ax['C'].set_title("Loss Terms")
 ax['C'].set_yscale('log')
@@ -694,7 +547,7 @@ ax['C'].legend()
 
 ax['D'].plot(nb_steps, c="brown")
 ax['D'].set_xlabel("Epochs")
-ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs)")
+ax['D'].set_title("Total Number of Steps Taken per Epoch (Proportional to NFEs) - During Context-only Update")
 ax['D'].set_yscale('log')
 
 eps = 0.1
@@ -729,11 +582,3 @@ print("Testing finished. Script, data, figures, and models saved in:", data_fold
 #%%
 
 print(weights)
-
-
-# %% [markdown]
-
-# # Preliminary results
-# 
-
-# # Conclusion
