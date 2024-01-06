@@ -83,21 +83,23 @@ if train == True:
     # data_folder = './data/'
     # dataset_path = "./data/simple_pendulum_big.npz"
 
-    data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
-    os.mkdir(data_folder)
+    # data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
+    data_folder = './data/00_Alternating/'
+    # os.mkdir(data_folder)
 
     # - save the script in that folder
     script_name = os.path.basename(__file__)
     os.system(f"cp {script_name} {data_folder}");
 
     # - save the dataset as well
-    dataset_path = "./data/simple_pendulum_big.npz"
-    os.system(f"cp {dataset_path} {data_folder}");
+    # dataset_path = "./data/simple_pendulum_big.npz"
+    dataset_path = data_folder+"simple_pendulum_big.npz"
+    # os.system(f"cp {dataset_path} {data_folder}");
 
     print("Data folder created successfuly:", data_folder)
 
 else:
-    # data_folder = "2EnvsThatWorks"
+    # data_folder = "12AlternatingWorks"
     data_folder = "./data/23122023-121748/"
     dataset_path = data_folder+"simple_pendulum_big.npz"
     print("No training. Loading data and results from:", data_folder)
@@ -234,7 +236,11 @@ class Context(eqx.Module):
 
     def __init__(self, nb_envs, context_size, key=None):
         self.params = jax.random.normal(key, (nb_envs, context_size))
-        # self.params = jnp.zeros((nb_envs, context_size))                    ## TODO - Mark
+        # self.params = jnp.zeros((nb_envs, context_size))
+
+        ## Load from the contexts.npz file
+        # self.params = np.load(data_folder+"enc_contexts.npz")['final']
+        # assert self.params.shape == (nb_envs, context_size), "Contexts shape mismatch"
 
 
 
@@ -274,8 +280,7 @@ def params_norm(params):
     return jnp.array([jnp.linalg.norm(x) for x in jax.tree_util.tree_leaves(params)]).sum()
 
 def l2_norm(X, X_hat):
-    total_loss = jnp.mean((X - X_hat)**2, axis=-1)   ## Norm of d-dimensional vectors
-    # return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
+    total_loss = jnp.mean((X - X_hat)**2, axis=-1)   ## TODO mean or sum ? Norm of d-dimensional vectors
     return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
 
 
@@ -551,10 +556,12 @@ for i, (x, y) in enumerate(xis[:, :2]):
 ax['E'].set_title(r'Initial Contexts (first 2 dims)')
 ax['F'].set_title(r'Final Contexts (first 2 dims)')
 
+np.savez(data_folder+"node_contexts.npz", initial=init_xis, final=xis)
+
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
 plt.tight_layout()
-plt.savefig(data_folder+"results.png", dpi=100, bbox_inches='tight')
+plt.savefig(data_folder+"alternating_node.png", dpi=100, bbox_inches='tight')
 plt.show()
 
 print("Testing finished. Script, data, figures, and models saved in:", data_folder)
