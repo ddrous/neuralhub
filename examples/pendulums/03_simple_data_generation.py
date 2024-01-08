@@ -20,16 +20,24 @@ def simple_pendulum(t, state, L, g):
     return [theta_dot, theta_ddot]
 
 
-nb_envs = 12
+nb_envs = 9
 environments = []
 gs = np.linspace(3, 25, nb_envs)
 for e in range(nb_envs):
     # L = np.random.uniform(0.5, 1.5)
-    L = 1
+    # L = 1
+    L = 0.75
     # g = np.random.uniform(3.72, 240.79)
     g = gs[e]
     environments.append({"L": L, "g": g})
 
+for e in range(nb_envs):
+    # L = np.random.uniform(0.5, 1.5)
+    # L = 1
+    L = 1.25
+    # g = np.random.uniform(3.72, 240.79)
+    g = gs[e]
+    environments.append({"L": L, "g": g})
 
 
 # environments = [
@@ -59,7 +67,7 @@ for e in range(nb_envs):
 # # ]
 
 
-n_traj_per_env = 128*24
+n_traj_per_env = 128*2
 n_steps_per_traj = 201
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))

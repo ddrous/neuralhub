@@ -55,6 +55,7 @@ from functools import partial
 
 import os
 import time
+# import cProfile
 
 #%%
 
@@ -68,8 +69,8 @@ init_lr = 3e-3
 
 ## Training hps
 print_every = 100
-nb_epochs = 1000
-batch_size = 128*24
+nb_epochs = 20
+batch_size = 128*2
 
 cutoff = 0.2
 context_size = 2
@@ -80,11 +81,8 @@ train = True
 
 if train == True:
     # - make a new folder inside 'data' whose name is the current time
-    # data_folder = './data/'
-    # dataset_path = "./data/simple_pendulum_big.npz"
-
     # data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
-    data_folder = './data/00_Alternating/'
+    data_folder = './data/ExperimentTemp/'
     # os.mkdir(data_folder)
 
     # - save the script in that folder
@@ -92,9 +90,9 @@ if train == True:
     os.system(f"cp {script_name} {data_folder}");
 
     # - save the dataset as well
-    # dataset_path = "./data/simple_pendulum_big.npz"
-    dataset_path = data_folder+"simple_pendulum_big.npz"
-    # os.system(f"cp {dataset_path} {data_folder}");
+    dataset_path = "./data/simple_pendulum_big.npz"
+    # dataset_path = data_folder+"simple_pendulum_big.npz"
+    os.system(f"cp {dataset_path} {data_folder}");
 
     print("Data folder created successfuly:", data_folder)
 
@@ -279,6 +277,48 @@ def params_norm(params):
     """ norm of the parameters """
     return jnp.array([jnp.linalg.norm(x) for x in jax.tree_util.tree_leaves(params)]).sum()
 
+def spectral_norm(params):
+    """ spectral norm of the parameters """
+    return jnp.array([jnp.linalg.svd(x, compute_uv=False)[0] for x in jax.tree_util.tree_leaves(params) if jnp.ndim(x)==2]).sum()
+
+
+# def spectral_norm_estimation(params, nb_iters=5, *, key=None):
+#     """ estimating the spectral norm with the power iteration: https://arxiv.org/abs/1802.05957 """
+#     matrices = [x for x in jax.tree_util.tree_leaves(params) if jnp.ndim(x)==2]
+#     keys = generate_new_keys(key, num=len(matrices))
+#     us = [jax.random.normal(k, (x.shape[0],)) for k, x in zip(keys, matrices)]
+#     vs = [jax.random.normal(k, (x.shape[1],)) for k, x in zip(keys, matrices)]
+
+#     for _ in range(nb_iters):
+
+#         vs = [x.T@u for x, u in zip(matrices, us)]
+#         vs = [v / jnp.linalg.norm(v) for v in vs]
+#         us = [x@v for x, v in zip(matrices, vs)]
+#         us = [u / jnp.linalg.norm(u) for u in us]
+
+#     sigmas = [u.T@x@v for x, u, v in zip(matrices, us, vs)]
+#     return jnp.array(sigmas).sum()
+
+def spectral_norm_estimation(params, nb_iters=5, *, key=None):
+    """ estimating the spectral norm with the power iteration: https://arxiv.org/abs/1802.05957 """
+    matrices = [x for x in jax.tree_util.tree_leaves(params) if jnp.ndim(x)==2]
+    nb_matrices = len(matrices)
+    keys = generate_new_keys(key, num=nb_matrices)
+    us = [jax.random.normal(k, (x.shape[0],)) for k, x in zip(keys, matrices)]
+    vs = [jax.random.normal(k, (x.shape[1],)) for k, x in zip(keys, matrices)]
+
+    for _ in range(nb_iters):
+        for i in range(nb_matrices):
+            vs[i] = matrices[i].T@us[i]
+            vs[i] = vs[i] / jnp.linalg.norm(vs[i])
+            us[i] = matrices[i]@vs[i]
+            us[i] = us[i] / jnp.linalg.norm(us[i])
+
+    sigmas = [u.T@x@v for x, u, v in zip(matrices, us, vs)]
+    return jnp.array(sigmas).sum()
+
+
+
 def l2_norm(X, X_hat):
     total_loss = jnp.mean((X - X_hat)**2, axis=-1)   ## TODO mean or sum ? Norm of d-dimensional vectors
     return jnp.sum(total_loss) / (X.shape[-2] * X.shape[-3])
@@ -303,7 +343,18 @@ def loss_fn(params, static, context, batch, weights):
     def loss_for_one_env(Xs_e, context_e):
         Xs_hat_e, nb_steps = jax.vmap(model, in_axes=(0, None, None))(Xs_e[:, 0, :], t_eval, context_e)
         term1 = l2_norm(Xs_e, Xs_hat_e)
-        term2 = params_norm(params.processor.envnet)
+
+        # term2_1 = params_norm(params.processor.envnet)
+        # term2_1 = spectral_norm(params.processor.envnet)
+        term2_1 = spectral_norm_estimation(params.processor.envnet, key=training_key)
+
+
+        xs_e_flat = jnp.reshape(Xs_e, (-1, Xs_e.shape[-1]))
+        outputs_e = jax.vmap(model.processor.envnet, in_axes=(None, 0, None))(None, xs_e_flat, context_e)
+        term2_2 = jnp.mean(jnp.linalg.norm(outputs_e, axis=-1) / jnp.linalg.norm(xs_e_flat, axis=-1))
+
+        term2 = term2_1 + 1e-0 * term2_2
+
         loss_val = term1 + 1e-3*term2
         # loss_val = term1
         return loss_val, (jnp.sum(nb_steps), term1, term2)
@@ -336,7 +387,10 @@ def train_step_cont(params, static, context, batch, weights, opt_state):
 
     return params, context, opt_state, loss, aux_data
 
+# pr = cProfile.Profile()
+# pr.enable()
 
+# with jax.profiler.trace("./data/jax-trace", create_perfetto_link=True, create_perfetto_trace=True):
 
 if train == True:
 
@@ -454,6 +508,10 @@ else:
     context = eqx.tree_deserialise_leaves(data_folder+"context.eqx", context)
 
 
+# jax.profiler.stop_trace()
+
+# pr.disable()
+# pr.dump_stats("data/program.prof")
 
 
 
@@ -571,10 +629,7 @@ print("Testing finished. Script, data, figures, and models saved in:", data_fold
 
 print(weights)
 
+print(model.processor.physics.params)
 
-# %% [markdown]
 
-# # Preliminary results
-# 
 
-# # Conclusion

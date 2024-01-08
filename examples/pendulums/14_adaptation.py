@@ -50,7 +50,7 @@ init_lr = 3e-3
 ## Training hps
 print_every = 100
 nb_epochs = 1000
-batch_size = 16*8
+# batch_size = 16*8
 
 cutoff = 0.2
 context_size = 2
@@ -65,7 +65,8 @@ if train == True:
     # dataset_path = "./data/simple_pendulum_big.npz"
 
     # data_folder = './data/'+time.strftime("%d%m%Y-%H%M%S")+'/'
-    data_folder = './data/00_Alternating/'
+    # data_folder = './data/00_Alternating/'
+    data_folder = './data/08012024-120620/'
     # os.mkdir(data_folder)
 
     # - save the script in that folder
@@ -109,7 +110,7 @@ adapt_key = get_new_key(time.time_ns(), num=1)
 
 # adapt_key = jnp.array([1486095591, 2923071726], dtype=jnp.uint32)
 
-gs = jax.random.uniform(key=adapt_key, minval=1, maxval=28, shape=(nb_envs,))
+gs = jax.random.uniform(key=adapt_key, minval=15, maxval=25, shape=(nb_envs,))
 gs = np.array(gs)
 
 for e in range(nb_envs):
@@ -117,7 +118,8 @@ for e in range(nb_envs):
     g = gs[e]
     environments.append({"L": L, "g": g})
 
-n_traj_per_env = 16*8
+n_traj_per_env = 128//4
+batch_size = n_traj_per_env
 n_steps_per_traj = 201
 
 data = np.zeros((len(environments), n_traj_per_env, n_steps_per_traj, 2))
@@ -133,6 +135,9 @@ for j in range(n_traj_per_env):
         solution = solve_ivp(simple_pendulum, t_span, initial_state, args=(selected_params['L'], selected_params['g']), t_eval=t_eval)
 
         data[i, j, :, :] = solution.y.T
+
+data = data[:, :-4, :, :]
+data_test = data[:, -4:, :, :]
 
 nb_trajs_per_env = data.shape[1]
 nb_steps_per_traj = data.shape[2]
@@ -492,12 +497,12 @@ e_key, traj_key = get_new_key(time.time_ns(), num=2)
 
 e = jax.random.randint(e_key, (1,), 0, nb_envs)[0]
 # e=0
-traj = jax.random.randint(traj_key, (1,), 0, nb_trajs_per_env)[0]
+traj = jax.random.randint(traj_key, (1,), 0, data_test.shape[1])[0]
 
 # test_length = cutoff_length
 test_length = nb_steps_per_traj
 t_test = t_eval[:test_length]
-X = data[e, traj, :test_length, :]
+X = data_test[e, traj, :test_length, :]
 
 print("==  Begining testing ... ==")
 print("    Environment id:", e)
@@ -570,6 +575,8 @@ ax['E'].set_title(r'Initial Contexts (first 2 dims)')
 ax['F'].set_title(r'Final Contexts (first 2 dims)')
 
 np.savez(data_folder+"node_contexts.npz", initial=init_xis, final=xis)
+print("Initial value of the context:", init_xis[e])
+print("Final value of the context:", xis[e])
 
 plt.suptitle(f"Results for env={e}, traj={traj}", fontsize=14)
 
@@ -582,3 +589,4 @@ print("Testing finished. Script, data, figures, and models saved in:", data_fold
 #%%
 
 print(weights)
+print(model.processor.physics.params)
