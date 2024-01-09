@@ -69,7 +69,7 @@ init_lr = 3e-3
 
 ## Training hps
 print_every = 100
-nb_epochs = 20
+nb_epochs = 2000
 batch_size = 128*2
 
 cutoff = 0.2
@@ -98,7 +98,7 @@ if train == True:
 
 else:
     # data_folder = "12AlternatingWorks"
-    data_folder = "./data/23122023-121748/"
+    data_folder = "./data/ExperimentTemp/"
     dataset_path = data_folder+"simple_pendulum_big.npz"
     print("No training. Loading data and results from:", data_folder)
 
@@ -206,9 +206,11 @@ class Processor(eqx.Module):
 
 class NeuralODE(eqx.Module):
     processor: Processor
+    invariant: eqx.Module
 
     def __init__(self, data_size, width_size, depth, context_size, key=None):
         self.processor = Processor(data_size, width_size, depth, context_size, key=key)
+        self.invariant = eqx.nn.MLP(data_size, 1, width_size, depth, key=key)
 
     def __call__(self, x0, t_eval, context):
         solution = diffrax.diffeqsolve(
@@ -361,7 +363,14 @@ def loss_fn(params, static, context, batch, weights):
 
     all_loss, (all_nb_steps, all_term1, all_term2) = jax.vmap(loss_for_one_env, in_axes=(0, 0))(Xs[:, :, :, :], context.params)
 
-    return jnp.sum(all_loss*weights), (jnp.sum(all_nb_steps), all_term1, all_term2)     ## TODO Return non-reduced aux data
+    xs_flat = jnp.reshape(Xs, (-1, Xs.shape[-1]))
+    grad_inv = jax.vmap(jax.grad(lambda x1, x2: model.invariant(jnp.array([x1,x2]))[0]))(xs_flat[:,0], xs_flat[:,1])   ## TODO = Wrong. The derivative is wrt to time, not the state
+    inv_loss = jnp.mean(jnp.linalg.norm(grad_inv, axis=-1))
+
+    # total_loss = jnp.sum(all_loss*weights) + 1e3*inv_loss
+    total_loss = jnp.sum(all_loss*weights)
+
+    return total_loss, (jnp.sum(all_nb_steps), all_term1, all_term2)     ## TODO Return non-reduced aux data
 
 
 @partial(jax.jit, static_argnums=(1))
@@ -404,7 +413,7 @@ if train == True:
                                                     int(total_steps*0.5):0.25,
                                                     int(total_steps*0.75):0.25})
 
-    opt_node = optax.adam(sched_node)
+    opt_node = optax.adabelief(sched_node)
     opt_state_node = opt_node.init(params)
 
     sched_cont = optax.piecewise_constant_schedule(init_value=init_lr,
@@ -413,7 +422,7 @@ if train == True:
                                                     int(total_steps*0.5):0.25,
                                                     int(total_steps*0.75):0.25})
 
-    opt_cont = optax.adam(sched_cont)
+    opt_cont = optax.adabelief(sched_cont)
     opt_state_cont = opt_cont.init(context)
 
     print(f"\n\n=== Beginning training neural ODE ... ===")
@@ -627,9 +636,46 @@ print("Testing finished. Script, data, figures, and models saved in:", data_fold
 
 #%%
 
-print(weights)
+# print(weights)
 
 print(model.processor.physics.params)
 
 
 
+#%%
+
+## Level set of the invariant
+
+lim = 5
+
+# x = np.linspace(-lim, lim, 100)
+# y = np.linspace(-lim, lim, 100)
+
+e=14
+
+xs_flat = np.reshape(data[e,::100, :, :], (-1, data[e].shape[-1]))
+x = xs_flat[:,0]
+y = xs_flat[:,1]
+X, Y = np.meshgrid(x, y)
+
+Z = jax.vmap(model.invariant)(np.vstack([X.ravel(), Y.ravel()]).T)
+Z = np.array(Z).reshape(X.shape)
+
+plt.clf()  # Clear the plot for the next frame
+# plt.contourf(X, Y, Z, levels=50, cmap='gray')
+plt.contour(X, Y, Z, levels=12, cmap='viridis')
+# plt.contourf(X, Y, Z, levels=[0, 1], cmap='gray')
+plt.colorbar(label=r'Invariant $I(\theta,\dot\theta)$');
+
+# contour = plt.contour(X, Y, Z, levels=10, cmap='Blues')
+# plt.clabel(contour, inline=True, fontsize=8, fmt=r'$I(\theta,\dot\theta)={:1.0f}$'.format(contour.levels[0]))
+
+#%%
+## Plot Z against X and Y in 3D
+
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.contour3D(X, Y, Z, 50, cmap='binary')
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+ax.set_zlabel('z');
