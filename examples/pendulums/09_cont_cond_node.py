@@ -190,7 +190,7 @@ class NeuralODE(eqx.Module):
                     t1=t_eval[-1],
                     dt0=t_eval[1] - t_eval[0],
                     y0=x0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-1, atol=1e-2),
+                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-4),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     max_steps=4096*10,
                 )
