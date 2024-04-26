@@ -41,12 +41,13 @@ def generate_new_keys(key=None, num=1):
     return jax.random.split(key, num=num)
 
 ## Wrapper function for matplotlib and seaborn
-def sbplot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=None, x_scale='linear', y_scale='linear', xlim=None, ylim=None, **kwargs):
+def sbplot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=None, x_scale='linear', y_scale='linear', xlim=None, ylim=None, context="notebook", style="ticks", dark_background=False, **kwargs):
     import matplotlib.pyplot as plt
     import seaborn as sns
-    sns.set(context='notebook', style='ticks',
+    sns.set_theme(context=context, style=style,
             font='sans-serif', font_scale=1, color_codes=True, rc={"lines.linewidth": 2})
-    plt.style.use("dark_background")
+    if dark_background:
+        plt.style.use("dark_background")
 
     if ax==None:
         _, ax = plt.subplots(1, 1, figsize=figsize)

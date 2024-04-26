@@ -1,0 +1,71 @@
+
+############# Neural ODE #############
+
+Available devices: [cuda(id=0)]
+
+
+=== Beginning Training ... ===
+
+Compiling function "train_step" ...
+
+
+Compiling function "loss_fn" ...
+
+    Epoch:     0      Loss: 195.30830383
+    Epoch:     1      Loss: 62.99264526
+    Epoch:     2      Loss: 19.85837936
+    Epoch:     3      Loss: 5.10546064
+    Epoch:  1000      Loss: 0.11094522
+    Epoch:  2000      Loss: 0.06355820
+    Epoch:  3000      Loss: 0.03790554
+    Epoch:  4000      Loss: 0.02366514
+    Epoch:  5000      Loss: 0.00790269
+    Epoch:  6000      Loss: 0.00238533
+    Epoch:  7000      Loss: 0.00279888
+    Epoch:  8000      Loss: 5.02785158
+    Epoch:  9000      Loss: 4.81908703
+    Epoch: 10000      Loss: 4.81466198
+    Epoch: 11000      Loss: 4.81018972
+    Epoch: 12000      Loss: 4.85874653
+    Epoch: 13000      Loss: 4.84177065
+    Epoch: 14000      Loss: 4.82376194
+    Epoch: 15000      Loss: 4.81896400
+    Epoch: 16000      Loss: 4.81198168
+    Epoch: 17000      Loss: 4.79591274
+    Epoch: 18000      Loss: 11.11311054
+    Epoch: 19000      Loss: 11.11311054
+    Epoch: 20000      Loss: 11.11311054
+    Epoch: 21000      Loss: 11.11311054
+    Epoch: 22000      Loss: 11.11311054
+    Epoch: 23000      Loss: 11.11311054
+    Epoch: 24000      Loss: 11.11311817
+    Epoch: 25000      Loss: 11.11311817
+    Epoch: 26000      Loss: 11.11307240
+    Epoch: 27000      Loss: 11.11312294
+    Epoch: 28000      Loss: 11.11341286
+    Epoch: 29000      Loss: 11.11322880
+    Epoch: 30000      Loss: 11.11317158
+    Epoch: 31000      Loss: 11.11325550
+    Epoch: 32000      Loss: 11.11325264
+    Epoch: 33000      Loss: 11.11346054
+    Epoch: 34000      Loss: 11.11223125
+    Epoch: 35000      Loss: 11.11125469
+    Epoch: 36000      Loss: 11.10884762
+    Epoch: 37000      Loss: 11.11507893
+    Epoch: 38000      Loss: 11.10626316
+    Epoch: 39000      Loss: 11.11100197
+    Epoch: 40000      Loss: 11.09786797
+    Epoch: 41000      Loss: 11.08241081
+    Epoch: 42000      Loss: 11.05640030
+    Epoch: 43000      Loss: 11.01072311
+    Epoch: 44000      Loss: 10.93710518
+    Epoch: 45000      Loss: 10.82653904
+    Epoch: 46000      Loss: 10.65035629
+    Epoch: 47000      Loss: 10.40291309
+    Epoch: 48000      Loss: 10.08657455
+    Epoch: 49000      Loss: 9.64264965
+    Epoch: 49999      Loss: 9.13305473
+No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+
+Total GD training time: 0 hours 28 mins 24 secs
+(100, 2)

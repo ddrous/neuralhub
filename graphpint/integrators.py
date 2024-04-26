@@ -101,6 +101,20 @@ def rk4_integrator(rhs, y0, t, rtol, atol, hmax, mxstep, max_steps_rev, kind):
   # return ys
   return jnp.concatenate([y0[jnp.newaxis, :], ys], axis=0)
 
+def rk4_integrator_args(rhs, y0, t, args, rtol, atol, hmax, mxstep, max_steps_rev, kind):
+  def step(state, t):
+    y_prev, t_prev = state
+    h = t - t_prev
+    k1 = h * rhs(y_prev, t_prev, args)
+    k2 = h * rhs(y_prev + k1/2., t_prev + h/2., args)
+    k3 = h * rhs(y_prev + k2/2., t_prev + h/2., args)
+    k4 = h * rhs(y_prev + k3, t + h, args)
+    y = y_prev + 1./6 * (k1 + 2 * k2 + 2 * k3 + k4)
+    return (y, t), y
+  _, ys = jax.lax.scan(step, (y0, t[0]), t[1:])
+  # return ys
+  return jnp.concatenate([y0[jnp.newaxis, :], ys], axis=0)
+
 
 
 ## RBF integrator (TODO Implement this from Updec)
