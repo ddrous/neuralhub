@@ -35,18 +35,24 @@ import optax
 from functools import partial
 import time
 
+
 #%%
 
-SEED = 2024
+SEED = 2026
 
 ## Optimiser hps
-init_lr = 1e-3
-decay_rate = 0.9
+init_lr = 5e-4
+
+epsilon = 1e-1  ## For contrastive loss
+eta_inv, eta_cont, eta_spar = 1e-2, 1e-4, 1e-1
 
 ## Training hps
 print_every = 100
-nb_epochs = 5000
+nb_epochs = 1000
+inner_steps = 50
 
+## Data generation hps
+T_horizon = 40
 skip = 100
 
 #%%
@@ -60,7 +66,7 @@ def duffing(t, state, a, b, c):
 # Parameters
 a, b, c = -1/2., -1, 1/10.
 
-t_span = (0, 40)
+t_span = (0, T_horizon)
 t_eval = np.arange(t_span[0], t_span[1], 0.01)[::skip]
 
 init_conds = np.array([[-0.5, -1], [-0.5, -0.5], [-0.5, 0.5], 
@@ -91,6 +97,7 @@ ax.set_title('Phase Space')
 ## Save the training data
 data = np.stack(train_data)[None, ...]
 
+print("Data shape:", data.shape)
 
 # %%
 
@@ -124,11 +131,14 @@ class BasisFunction(eqx.Module):
 
         for layer in self.layers:
             y = layer(y)
-        return x + y
+        # return x + y
+        return (x + y).squeeze()
 
     def inv_call(self, x):
         """ Returns z such that x = z + MLP(z) via fixed point iteration """
-        pass
+        # pass
+        # return jnp.broadcast_to(x, (1,))
+        return x
 
 
 
@@ -153,20 +163,25 @@ class VectorField(eqx.Module):
         lambdas, gammas = coeffs
         # assert lambdas.shape == gammas.shape == (self.dict_size, self.data_size)
 
-        ## Vectorise across both dimensions, because each model is made to work on a scalar x
-        # @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
-        @eqx.filter_vmap
+        ## Vectorise across both dimensions (because each model is made to work on a scalar x)
+        @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
+        @eqx.filter_vmap(in_axes=(None, 0))
         def evaluate_funcs_dir(model, x):
             return model(x)
 
-        @eqx.filter_vmap
+        @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
+        @eqx.filter_vmap(in_axes=(None, 0))
         def evaluate_funcs_inv(model, x):
-            return model.invcall(x)
+            return model.inv_call(x)
+
+        # y_direct = evaluate_funcs_dir(self.basis_funcs, x).squeeze()
+        # y_inverse = evaluate_funcs_inv(self.basis_funcs, x).squeeze()
 
         y_direct = evaluate_funcs_dir(self.basis_funcs, x)
         y_inverse = evaluate_funcs_inv(self.basis_funcs, x)
 
-        return y_direct*lambdas + y_inverse*gammas
+        return jnp.sum(y_direct*lambdas + y_inverse*gammas, axis=0)
+        # return y_direct*lambdas[...,None] + y_inverse*gammas[...,None]
 
 
 
@@ -205,7 +220,7 @@ class NeuralODE(eqx.Module):
 
         def integrate(y0):
             sol = diffrax.diffeqsolve(
-                    diffrax.ODETerm(self.vectorfield),
+                    diffrax.ODETerm(self.vector_field),
                     diffrax.Dopri5(),
                     args=(coeffs.lambdas, coeffs.gammas),
                     t0=t_eval[0],
@@ -226,8 +241,8 @@ class NeuralODE(eqx.Module):
 
 model_keys = get_new_key(SEED, num=2)
 
-model = NeuralODE(data_size=2, dict_size=16, mlp_hidden_size=32, mlp_depth=2, key=model_keys[0])
-coeffs = Coefficients(data_size=2, dict_size=16, key=model_keys[1])
+model = NeuralODE(data_size=2, dict_size=8, mlp_hidden_size=16, mlp_depth=3, key=model_keys[0])
+coeffs = Coefficients(data_size=2, dict_size=8, key=model_keys[1])
 
 
 
@@ -244,11 +259,13 @@ def loss_inv(model, coeffs, batch, key):
     X, _ = batch
 
     @eqx.filter_vmap(in_axes=(None, 0))
-    @eqx.filter_vmap
+    @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
+    @eqx.filter_vmap(in_axes=(None, 0))
     def eval_direct_inverse(basis_func, x):
         return basis_func(basis_func.inv_call(x))
     
-    X_ = eval_direct_inverse(model, X.reshape(-1, model.data_size))
+    X_ = eval_direct_inverse(model.vector_field.basis_funcs, X.reshape(-1, model.data_size))
+    X = X.reshape(-1, model.data_size)[:, None, :]
 
     return jnp.mean((X-X_)**2)
 
@@ -258,25 +275,29 @@ def loss_cont(model, coeffs, batch, key):
 
     ## Extract and stack the weights along the last dimension
     basis_funcs = model.vector_field.basis_funcs
-    weights = [layer.weights for layer in basis_funcs.layers if isinstance(layer, eqx.nn.Linear)]
-    weights = jnp.stack(weights, axis=-1)
+    weights = [layer.weight for layer in basis_funcs.layers if isinstance(layer, eqx.nn.Linear)]
+
+    # print([w.shape for w in weights])
+
+    # weights = jnp.stack(weights, axis=-1)
 
     ## Sample two weights along the first dimention
     ind = jax.random.permutation(key, model.dict_size)[:2]
-    w1, w2 = weights[ind, ...]
+    # w1, w2 = weights[ind, ...]
 
-    return -jnp.mean((w1-w2)**2)        ## Maximise the difference between the weights
+    tot_error = 0.
+    for d in range(len(weights)):
+        w1, w2 = weights[d][ind[0], ...], weights[d][ind[1], ...]
+        tot_error += jnp.mean((w1-w2)**2)
+
+    return epsilon - tot_error        ## Maximise the difference between the weights up to epsilon
 
 def loss_sparsity(model, coeffs, batch, key):
     """ Sparsity loss - Makes the coefficients sparse """
-    lambdas, gammas = coeffs
-    return jnp.mean(jnp.abs(lambdas) + jnp.abs(gammas))
+    return jnp.mean(jnp.abs(coeffs.lambdas) + jnp.abs(coeffs.gammas))
 
 
 def loss_fn(model, coeffs, batch, key):
-    print('\nCompiling function "loss_fn" ...\n')
-
-    eta_inv, eta_cont, eta_spar = 1e-2, 1e-2, 1e-2
 
     rec_loss = loss_rec(model, coeffs, batch, key)
     inv_loss = loss_inv(model, coeffs, batch, key)
@@ -291,7 +312,7 @@ def loss_fn(model, coeffs, batch, key):
 
 @eqx.filter_jit
 def train_step_node(model, coeffs, batch, opt_state, key):
-    print('\nCompiling function "train_step" ...\n')
+    print('\nCompiling function "train_step" for Node ...\n')
 
     loss, grads = eqx.filter_value_and_grad(loss_fn)(model, coeffs, batch, key)
 
@@ -301,11 +322,12 @@ def train_step_node(model, coeffs, batch, opt_state, key):
     return model, coeffs, opt_state, loss
 
 
+@eqx.filter_jit
 def train_step_coeffs(model, coeffs, batch, opt_state, key):
-    print('\nCompiling function "train_step" ...\n')
+    print('\nCompiling function "train_step" for Coeffs...\n')
 
     new_loss_fn = lambda coeffs, model, batch, key: loss_fn(model, coeffs, batch, key)
-    loss, grads = eqx.filter_value_and_grad(new_loss_fn)(model, coeffs, batch, key)
+    loss, grads = eqx.filter_value_and_grad(new_loss_fn)(coeffs, model, batch, key)
 
     updates, opt_state = opt_coeffs.update(grads, opt_state)
     coeffs = eqx.apply_updates(coeffs, updates)
@@ -354,10 +376,13 @@ for epoch in range(nb_epochs):
     
         train_key, _ = jax.random.split(train_key)
 
-        model, coeffs, opt_state, loss = train_step_node(model, coeffs, batch, opt_state, train_key)
+        for _ in range(inner_steps):
+            model, coeffs, opt_state_node, loss = train_step_node(model, coeffs, batch, opt_state_node, train_key)
+
         loss_sum_node += loss
 
-        model, coeffs, opt_state, loss = train_step_coeffs(model, coeffs, batch, opt_state, train_key)
+        for _ in range(inner_steps):
+            model, coeffs, opt_state_coeffs, loss = train_step_coeffs(model, coeffs, batch, opt_state_coeffs, train_key)
         loss_sum_coeffs += loss
 
         nb_batches += 1
@@ -373,8 +398,10 @@ for epoch in range(nb_epochs):
         print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      LossCoeffs: {loss_epoch_coeffs:.8f}", flush=True)
 
 
-ax = sbplot(losses_node, x_label='Epoch', y_label='L2', y_scale="log", title='Losses Node', ax=ax);
-ax = sbplot(losses_coeffs, "o-", y_scale="log", title='Losses Coeffs', ax=ax);
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+ax = sbplot(losses_node, x_label='Epoch', y_label='L2', y_scale="log", label='Losses Node', ax=ax, dark_background=True);
+ax = sbplot(losses_coeffs, ".", y_scale="log", label='Losses Coeffs', ax=ax, dark_background=True);
+
 plt.savefig(f"data/loss.png", dpi=300, bbox_inches='tight')
 plt.legend()
 # plt.show()
@@ -402,7 +429,7 @@ def test_model(model, coeffs, batch, key):
 i = np.random.randint(0, 1)
 
 X = data[0, :, :, :]
-t = np.linspace(t_span[0], t_span[1], 40)       ## TODO important
+t = np.linspace(t_span[0], t_span[1], T_horizon)       ## TODO important
 
 X_hat = test_model(model, coeffs, (X[:, 0,:], t), train_key)
 
@@ -414,11 +441,11 @@ colors = colors*10
 for i in range(X.shape[0]):
 
     if i==0:
-        sbplot(X_hat[i, :,0], X_hat[i, :,1], x_label='x', y_label='y', label=f'Pred', title=f'Phase space', ax=ax, alpha=0.5, color=colors[i])
-        sbplot(X[i, :,0], X[i, :,1], "o", lw=1, label=f'True', ax=ax, color=colors[i])
+        sbplot(X_hat[i, :,0], X_hat[i, :,1], "o-", x_label='x', y_label='y', label=f'Pred', title=f'Phase space', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(X[i, :,0], X[i, :,1], "+", lw=1, label=f'True', ax=ax, color=colors[i])
     else:
-        sbplot(X_hat[i, :,0], X_hat[i, :,1], x_label='x', y_label='y', ax=ax, alpha=0.5, color=colors[i])
-        sbplot(X[i, :,0], X[i, :,1], "o", lw=1, ax=ax, color=colors[i])
+        sbplot(X_hat[i, :,0], X_hat[i, :,1], "o-", x_label='x', y_label='y', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(X[i, :,0], X[i, :,1], "+", lw=1, ax=ax, color=colors[i])
 
 plt.savefig(f"data/test_traj.png", dpi=300, bbox_inches='tight')
 
