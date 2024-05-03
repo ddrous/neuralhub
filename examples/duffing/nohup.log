@@ -2,70 +2,353 @@
 ############# Neural ODE #############
 
 Available devices: [cuda(id=0)]
+Data shape: (1, 12, 10, 2)
 
 
 === Beginning Training ... ===
 
-Compiling function "train_step" ...
+Compiling function "train_step" for Node ...
 
 
-Compiling function "loss_fn" ...
+Compiling function "train_step" for Coeffs...
 
-    Epoch:     0      Loss: 195.30830383
-    Epoch:     1      Loss: 62.99264526
-    Epoch:     2      Loss: 19.85837936
-    Epoch:     3      Loss: 5.10546064
-    Epoch:  1000      Loss: 0.11094522
-    Epoch:  2000      Loss: 0.06355820
-    Epoch:  3000      Loss: 0.03790554
-    Epoch:  4000      Loss: 0.02366514
-    Epoch:  5000      Loss: 0.00790269
-    Epoch:  6000      Loss: 0.00238533
-    Epoch:  7000      Loss: 0.00279888
-    Epoch:  8000      Loss: 5.02785158
-    Epoch:  9000      Loss: 4.81908703
-    Epoch: 10000      Loss: 4.81466198
-    Epoch: 11000      Loss: 4.81018972
-    Epoch: 12000      Loss: 4.85874653
-    Epoch: 13000      Loss: 4.84177065
-    Epoch: 14000      Loss: 4.82376194
-    Epoch: 15000      Loss: 4.81896400
-    Epoch: 16000      Loss: 4.81198168
-    Epoch: 17000      Loss: 4.79591274
-    Epoch: 18000      Loss: 11.11311054
-    Epoch: 19000      Loss: 11.11311054
-    Epoch: 20000      Loss: 11.11311054
-    Epoch: 21000      Loss: 11.11311054
-    Epoch: 22000      Loss: 11.11311054
-    Epoch: 23000      Loss: 11.11311054
-    Epoch: 24000      Loss: 11.11311817
-    Epoch: 25000      Loss: 11.11311817
-    Epoch: 26000      Loss: 11.11307240
-    Epoch: 27000      Loss: 11.11312294
-    Epoch: 28000      Loss: 11.11341286
-    Epoch: 29000      Loss: 11.11322880
-    Epoch: 30000      Loss: 11.11317158
-    Epoch: 31000      Loss: 11.11325550
-    Epoch: 32000      Loss: 11.11325264
-    Epoch: 33000      Loss: 11.11346054
-    Epoch: 34000      Loss: 11.11223125
-    Epoch: 35000      Loss: 11.11125469
-    Epoch: 36000      Loss: 11.10884762
-    Epoch: 37000      Loss: 11.11507893
-    Epoch: 38000      Loss: 11.10626316
-    Epoch: 39000      Loss: 11.11100197
-    Epoch: 40000      Loss: 11.09786797
-    Epoch: 41000      Loss: 11.08241081
-    Epoch: 42000      Loss: 11.05640030
-    Epoch: 43000      Loss: 11.01072311
-    Epoch: 44000      Loss: 10.93710518
-    Epoch: 45000      Loss: 10.82653904
-    Epoch: 46000      Loss: 10.65035629
-    Epoch: 47000      Loss: 10.40291309
-    Epoch: 48000      Loss: 10.08657455
-    Epoch: 49000      Loss: 9.64264965
-    Epoch: 49999      Loss: 9.13305473
-No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+    Epoch:     0      LossNode: 2.01107144      LossCoeffs: 1.84733343
+    Epoch:     1      LossNode: 1.77442789      LossCoeffs: 1.56620836
+    Epoch:     2      LossNode: 1.41751873      LossCoeffs: 1.19444525
+    Epoch:     3      LossNode: 1.04397869      LossCoeffs: 0.91998124
+    Epoch:    50      LossNode: 0.33238494      LossCoeffs: 0.33150923
+    Epoch:   100      LossNode: 0.32495955      LossCoeffs: 0.32643384
+    Epoch:   150      LossNode: 0.32658592      LossCoeffs: 0.32583258
+    Epoch:   200      LossNode: 0.32264888      LossCoeffs: 0.32511005
+    Epoch:   250      LossNode: 0.32232758      LossCoeffs: 0.32071555
+    Epoch:   300      LossNode: 0.32321906      LossCoeffs: 0.32222930
+    Epoch:   350      LossNode: 0.32163507      LossCoeffs: 0.32222947
+    Epoch:   400      LossNode: 0.32292473      LossCoeffs: 0.31931764
+    Epoch:   450      LossNode: 0.31792441      LossCoeffs: 0.31910422
+    Epoch:   500      LossNode: 0.31763077      LossCoeffs: 0.31689808
+    Epoch:   550      LossNode: 0.31397787      LossCoeffs: 0.31408247
+    Epoch:   600      LossNode: 0.31311816      LossCoeffs: 0.31179705
+    Epoch:   650      LossNode: 0.30902958      LossCoeffs: 0.31127971
+    Epoch:   700      LossNode: 0.30694610      LossCoeffs: 0.30714032
+    Epoch:   750      LossNode: 0.30336472      LossCoeffs: 0.30177349
+    Epoch:   800      LossNode: 0.30315241      LossCoeffs: 0.30568039
+    Epoch:   850      LossNode: 0.30333850      LossCoeffs: 0.30172214
+    Epoch:   900      LossNode: 0.30044338      LossCoeffs: 0.30210543
+    Epoch:   950      LossNode: 0.30108473      LossCoeffs: 0.30123422
+    Epoch:  1000      LossNode: 0.30194601      LossCoeffs: 0.29995084
+    Epoch:  1050      LossNode: 0.30251428      LossCoeffs: 0.30152419
+    Epoch:  1100      LossNode: 0.30236477      LossCoeffs: 0.29939201
+    Epoch:  1150      LossNode: 0.29850593      LossCoeffs: 0.30125353
+    Epoch:  1200      LossNode: 0.30144727      LossCoeffs: 0.30155504
+    Epoch:  1250      LossNode: 0.30109882      LossCoeffs: 0.30064967
+    Epoch:  1300      LossNode: 0.30141082      LossCoeffs: 0.30019149
+    Epoch:  1350      LossNode: 0.30151153      LossCoeffs: 0.29600453
+    Epoch:  1400      LossNode: 0.30086151      LossCoeffs: 0.29792550
+    Epoch:  1450      LossNode: 0.30112639      LossCoeffs: 0.29976353
+    Epoch:  1500      LossNode: 0.30062592      LossCoeffs: 0.30052733
+    Epoch:  1550      LossNode: 0.29857543      LossCoeffs: 0.29977775
+    Epoch:  1600      LossNode: 0.30041859      LossCoeffs: 0.29988995
+    Epoch:  1650      LossNode: 0.29969454      LossCoeffs: 0.30013978
+    Epoch:  1700      LossNode: 0.29927552      LossCoeffs: 0.30095935
+    Epoch:  1750      LossNode: 0.30080250      LossCoeffs: 0.30062839
+    Epoch:  1800      LossNode: 0.29804784      LossCoeffs: 0.30071670
+    Epoch:  1850      LossNode: 0.29736423      LossCoeffs: 0.29898569
+    Epoch:  1900      LossNode: 0.29964161      LossCoeffs: 0.30176404
+    Epoch:  1950      LossNode: 0.29812029      LossCoeffs: 0.30002922
+    Epoch:  2000      LossNode: 0.29882148      LossCoeffs: 0.29912820
+    Epoch:  2050      LossNode: 0.29839671      LossCoeffs: 0.29947191
+    Epoch:  2100      LossNode: 0.29798070      LossCoeffs: 0.29867133
+    Epoch:  2150      LossNode: 0.29652452      LossCoeffs: 0.29864877
+    Epoch:  2200      LossNode: 0.29897410      LossCoeffs: 0.29851586
+    Epoch:  2250      LossNode: 0.29891205      LossCoeffs: 0.30017221
+    Epoch:  2300      LossNode: 0.29844609      LossCoeffs: 0.30000991
+    Epoch:  2350      LossNode: 0.29653016      LossCoeffs: 0.29695901
+    Epoch:  2400      LossNode: 0.29777592      LossCoeffs: 0.29769203
+    Epoch:  2450      LossNode: 0.29727963      LossCoeffs: 0.29799119
+    Epoch:  2500      LossNode: 0.29617956      LossCoeffs: 0.29743138
+    Epoch:  2550      LossNode: 0.30150801      LossCoeffs: 0.29849729
+    Epoch:  2600      LossNode: 0.29811263      LossCoeffs: 0.29626456
+    Epoch:  2650      LossNode: 0.29885703      LossCoeffs: 0.29863006
+    Epoch:  2700      LossNode: 0.29922342      LossCoeffs: 0.29711476
+    Epoch:  2750      LossNode: 0.30032015      LossCoeffs: 0.29676428
+    Epoch:  2800      LossNode: 0.29790109      LossCoeffs: 0.30037907
+    Epoch:  2850      LossNode: 0.29595920      LossCoeffs: 0.29718688
+    Epoch:  2900      LossNode: 0.29823366      LossCoeffs: 0.29849288
+    Epoch:  2950      LossNode: 0.29820794      LossCoeffs: 0.29899439
+    Epoch:  3000      LossNode: 0.29681164      LossCoeffs: 0.29668263
+    Epoch:  3050      LossNode: 0.29616639      LossCoeffs: 0.30003846
+    Epoch:  3100      LossNode: 0.29731065      LossCoeffs: 0.29733989
+    Epoch:  3150      LossNode: 0.29755706      LossCoeffs: 0.29452670
+    Epoch:  3200      LossNode: 0.29534727      LossCoeffs: 0.29729596
+    Epoch:  3250      LossNode: 0.29898736      LossCoeffs: 0.29741409
+    Epoch:  3300      LossNode: 0.29628912      LossCoeffs: 0.29818732
+    Epoch:  3350      LossNode: 0.29743043      LossCoeffs: 0.29809600
+    Epoch:  3400      LossNode: 0.29742351      LossCoeffs: 0.29875523
+    Epoch:  3450      LossNode: 0.29737103      LossCoeffs: 0.29745632
+    Epoch:  3500      LossNode: 0.30088317      LossCoeffs: 0.29932401
+    Epoch:  3550      LossNode: 0.29569408      LossCoeffs: 0.30030912
+    Epoch:  3600      LossNode: 0.29870653      LossCoeffs: 0.29952595
+    Epoch:  3650      LossNode: 0.29626617      LossCoeffs: 0.29587489
+    Epoch:  3700      LossNode: 0.29898560      LossCoeffs: 0.29686341
+    Epoch:  3750      LossNode: 0.29758108      LossCoeffs: 0.29736125
+    Epoch:  3800      LossNode: 0.29697630      LossCoeffs: 0.29879126
+    Epoch:  3850      LossNode: 0.29842153      LossCoeffs: 0.29614699
+    Epoch:  3900      LossNode: 0.29553112      LossCoeffs: 0.29919851
+    Epoch:  3950      LossNode: 0.29552701      LossCoeffs: 0.29858017
+    Epoch:  4000      LossNode: 0.29789886      LossCoeffs: 0.29712164
+    Epoch:  4050      LossNode: 0.29746845      LossCoeffs: 0.29783365
+    Epoch:  4100      LossNode: 0.29664522      LossCoeffs: 0.29687566
+    Epoch:  4150      LossNode: 0.30020893      LossCoeffs: 0.29931593
+    Epoch:  4200      LossNode: 0.29581705      LossCoeffs: 0.29861599
+    Epoch:  4250      LossNode: 0.29774314      LossCoeffs: 0.29825756
+    Epoch:  4300      LossNode: 0.29742220      LossCoeffs: 0.29803106
+    Epoch:  4350      LossNode: 0.29617664      LossCoeffs: 0.29655474
+    Epoch:  4400      LossNode: 0.29819602      LossCoeffs: 0.29607040
+    Epoch:  4450      LossNode: 0.29503390      LossCoeffs: 0.29621845
+    Epoch:  4500      LossNode: 0.29809648      LossCoeffs: 0.29976609
+    Epoch:  4550      LossNode: 0.29775384      LossCoeffs: 0.29897562
+    Epoch:  4600      LossNode: 0.29709485      LossCoeffs: 0.29828620
+    Epoch:  4650      LossNode: 0.29879847      LossCoeffs: 0.29704863
+    Epoch:  4700      LossNode: 0.29792553      LossCoeffs: 0.29784620
+    Epoch:  4750      LossNode: 0.29737106      LossCoeffs: 0.29729068
+    Epoch:  4800      LossNode: 0.29610118      LossCoeffs: 0.29537576
+    Epoch:  4850      LossNode: 0.29781869      LossCoeffs: 0.29797858
+    Epoch:  4900      LossNode: 0.29757854      LossCoeffs: 0.29704747
+    Epoch:  4950      LossNode: 0.29436982      LossCoeffs: 0.29696789
+    Epoch:  5000      LossNode: 0.30004790      LossCoeffs: 0.29968482
+    Epoch:  5050      LossNode: 0.29164666      LossCoeffs: 0.29623553
+    Epoch:  5100      LossNode: 0.29744342      LossCoeffs: 0.29771656
+    Epoch:  5150      LossNode: 0.29783902      LossCoeffs: 0.29504290
+    Epoch:  5200      LossNode: 0.29816923      LossCoeffs: 0.29874611
+    Epoch:  5250      LossNode: 0.30029029      LossCoeffs: 0.29491806
+    Epoch:  5300      LossNode: 0.29496500      LossCoeffs: 0.29628828
+    Epoch:  5350      LossNode: 0.29868144      LossCoeffs: 0.29607826
+    Epoch:  5400      LossNode: 0.29636341      LossCoeffs: 0.29735395
+    Epoch:  5450      LossNode: 0.29608428      LossCoeffs: 0.29754832
+    Epoch:  5500      LossNode: 0.29606569      LossCoeffs: 0.29870161
+    Epoch:  5550      LossNode: 0.29539651      LossCoeffs: 0.29617885
+    Epoch:  5600      LossNode: 0.29457498      LossCoeffs: 0.29681277
+    Epoch:  5650      LossNode: 0.29445213      LossCoeffs: 0.29629645
+    Epoch:  5700      LossNode: 0.29487285      LossCoeffs: 0.29645514
+    Epoch:  5750      LossNode: 0.29806620      LossCoeffs: 0.29412174
+    Epoch:  5800      LossNode: 0.29478565      LossCoeffs: 0.29509166
+    Epoch:  5850      LossNode: 0.30003268      LossCoeffs: 0.29820198
+    Epoch:  5900      LossNode: 0.29569474      LossCoeffs: 0.29959470
+    Epoch:  5950      LossNode: 0.29648215      LossCoeffs: 0.29676110
+    Epoch:  6000      LossNode: 0.29609364      LossCoeffs: 0.30050907
+    Epoch:  6050      LossNode: 0.29595530      LossCoeffs: 0.29690194
+    Epoch:  6100      LossNode: 0.30090350      LossCoeffs: 0.30068615
+    Epoch:  6150      LossNode: 0.29544836      LossCoeffs: 0.29509327
+    Epoch:  6200      LossNode: 0.29728591      LossCoeffs: 0.29601490
+    Epoch:  6250      LossNode: 0.29805923      LossCoeffs: 0.29514551
+    Epoch:  6300      LossNode: 0.29675975      LossCoeffs: 0.29607344
+    Epoch:  6350      LossNode: 0.29623002      LossCoeffs: 0.29413840
+    Epoch:  6400      LossNode: 0.29678759      LossCoeffs: 0.29606643
+    Epoch:  6450      LossNode: 0.29742843      LossCoeffs: 0.29884541
+    Epoch:  6500      LossNode: 0.29647881      LossCoeffs: 0.29690111
+    Epoch:  6550      LossNode: 0.29607415      LossCoeffs: 0.29644307
+    Epoch:  6600      LossNode: 0.29749691      LossCoeffs: 0.29442540
+    Epoch:  6650      LossNode: 0.29633835      LossCoeffs: 0.29655454
+    Epoch:  6700      LossNode: 0.29478204      LossCoeffs: 0.29464689
+    Epoch:  6750      LossNode: 0.29562068      LossCoeffs: 0.29819950
+    Epoch:  6800      LossNode: 0.29514974      LossCoeffs: 0.29737803
+    Epoch:  6850      LossNode: 0.29443797      LossCoeffs: 0.29680833
+    Epoch:  6900      LossNode: 0.29288828      LossCoeffs: 0.29854104
+    Epoch:  6950      LossNode: 0.29637149      LossCoeffs: 0.29642954
+    Epoch:  7000      LossNode: 0.29730672      LossCoeffs: 0.29597229
+    Epoch:  7050      LossNode: 0.29462594      LossCoeffs: 0.29391411
+    Epoch:  7100      LossNode: 0.29811776      LossCoeffs: 0.29207280
+    Epoch:  7150      LossNode: 0.29193959      LossCoeffs: 0.29824558
+    Epoch:  7200      LossNode: 0.29864663      LossCoeffs: 0.29618943
+    Epoch:  7250      LossNode: 0.29812571      LossCoeffs: 0.29790708
+    Epoch:  7300      LossNode: 0.29507476      LossCoeffs: 0.29391053
+    Epoch:  7350      LossNode: 0.29619071      LossCoeffs: 0.29663575
+    Epoch:  7400      LossNode: 0.29613349      LossCoeffs: 0.29452705
+    Epoch:  7450      LossNode: 0.29415214      LossCoeffs: 0.29660812
+    Epoch:  7500      LossNode: 0.29725027      LossCoeffs: 0.29706734
+    Epoch:  7550      LossNode: 0.29554766      LossCoeffs: 0.29727587
+    Epoch:  7600      LossNode: 0.29498583      LossCoeffs: 0.29505005
+    Epoch:  7650      LossNode: 0.29653162      LossCoeffs: 0.29501346
+    Epoch:  7700      LossNode: 0.29827711      LossCoeffs: 0.29998872
+    Epoch:  7750      LossNode: 0.30240631      LossCoeffs: 0.30099839
+    Epoch:  7800      LossNode: 0.29449487      LossCoeffs: 0.29651800
+    Epoch:  7850      LossNode: 0.29847994      LossCoeffs: 0.29524195
+    Epoch:  7900      LossNode: 0.29403132      LossCoeffs: 0.29712060
+    Epoch:  7950      LossNode: 0.29779053      LossCoeffs: 0.29602066
+    Epoch:  8000      LossNode: 0.29469219      LossCoeffs: 0.29583961
+    Epoch:  8050      LossNode: 0.29543439      LossCoeffs: 0.29743782
+    Epoch:  8100      LossNode: 0.29619402      LossCoeffs: 0.29730451
+    Epoch:  8150      LossNode: 0.29787686      LossCoeffs: 0.29556522
+    Epoch:  8200      LossNode: 0.29535243      LossCoeffs: 0.29594564
+    Epoch:  8250      LossNode: 0.29759097      LossCoeffs: 0.29645476
+    Epoch:  8300      LossNode: 0.29310805      LossCoeffs: 0.29277033
+    Epoch:  8350      LossNode: 0.29621163      LossCoeffs: 0.29323426
+    Epoch:  8400      LossNode: 0.29643047      LossCoeffs: 0.29764503
+    Epoch:  8450      LossNode: 0.29363215      LossCoeffs: 0.29532549
+    Epoch:  8500      LossNode: 0.29299775      LossCoeffs: 0.29661348
+    Epoch:  8550      LossNode: 0.29707164      LossCoeffs: 0.29656449
+    Epoch:  8600      LossNode: 0.29384181      LossCoeffs: 0.29614183
+    Epoch:  8650      LossNode: 0.29649892      LossCoeffs: 0.29737434
+    Epoch:  8700      LossNode: 0.29592639      LossCoeffs: 0.29548347
+    Epoch:  8750      LossNode: 0.29594481      LossCoeffs: 0.29773691
+    Epoch:  8800      LossNode: 0.29534730      LossCoeffs: 0.29508874
+    Epoch:  8850      LossNode: 0.29799548      LossCoeffs: 0.29550993
+    Epoch:  8900      LossNode: 0.29517040      LossCoeffs: 0.29464519
+    Epoch:  8950      LossNode: 0.29641417      LossCoeffs: 0.29276985
+    Epoch:  9000      LossNode: 0.29763624      LossCoeffs: 0.29214624
+    Epoch:  9050      LossNode: 0.29640603      LossCoeffs: 0.29546541
+    Epoch:  9100      LossNode: 0.29698566      LossCoeffs: 0.29837990
+    Epoch:  9150      LossNode: 0.29853857      LossCoeffs: 0.29444796
+    Epoch:  9200      LossNode: 0.29712987      LossCoeffs: 0.29555184
+    Epoch:  9250      LossNode: 0.29631004      LossCoeffs: 0.29676571
+    Epoch:  9300      LossNode: 0.29866159      LossCoeffs: 0.29501414
+    Epoch:  9350      LossNode: 0.29523528      LossCoeffs: 0.29642051
+    Epoch:  9400      LossNode: 0.29863283      LossCoeffs: 0.29738998
+    Epoch:  9450      LossNode: 0.29566196      LossCoeffs: 0.29701501
+    Epoch:  9500      LossNode: 0.29483888      LossCoeffs: 0.29414782
+    Epoch:  9550      LossNode: 0.29639876      LossCoeffs: 0.29796106
+    Epoch:  9600      LossNode: 0.29218125      LossCoeffs: 0.29740682
+    Epoch:  9650      LossNode: 0.29553151      LossCoeffs: 0.29661092
+    Epoch:  9700      LossNode: 0.29267743      LossCoeffs: 0.29712299
+    Epoch:  9750      LossNode: 0.29857624      LossCoeffs: 0.29802871
+    Epoch:  9800      LossNode: 0.29285723      LossCoeffs: 0.29958943
+    Epoch:  9850      LossNode: 0.29708734      LossCoeffs: 0.29516494
+    Epoch:  9900      LossNode: 0.29471251      LossCoeffs: 0.29436767
+    Epoch:  9950      LossNode: 0.29448122      LossCoeffs: 0.29678872
+    Epoch:  9999      LossNode: 0.29663721      LossCoeffs: 0.29541978
 
-Total GD training time: 0 hours 28 mins 24 secs
-(100, 2)
+Total GD training time: 1 hours 3 mins 32 secs
+Coeffs: 
+	  - Lambdas: 
+ [[-1.37549123e-05 -4.92433226e-03]
+ [-5.94789799e-06 -4.61968780e-02]
+ [-1.68649221e-05  4.49304655e-03]
+ [ 1.29733589e-05 -4.89017041e-03]
+ [ 1.37991165e-05 -1.69579033e-03]
+ [-1.78150367e-05 -3.30614522e-02]
+ [ 1.75465830e-05  5.62701002e-03]
+ [ 2.88082151e-06  5.57906972e-03]
+ [ 4.60284501e-02  5.37244091e-03]
+ [ 1.41392584e-05  5.67610259e-04]
+ [ 1.11207910e-05 -4.88831801e-03]
+ [-2.87240055e-05  1.32007001e-03]
+ [-3.48285466e-05  4.97966721e-06]
+ [-1.34333022e-05  4.50060144e-03]
+ [-7.26804274e-06 -1.72900758e-03]
+ [-3.34324795e-06  4.91185393e-03]
+ [-4.95578206e-05 -4.06217941e-06]
+ [-1.50501337e-05  1.16584655e-02]
+ [ 3.40493352e-06 -1.07914796e-02]
+ [ 1.40116163e-05  1.29417572e-02]
+ [-1.54198224e-05  4.86265030e-03]
+ [ 1.62472315e-06  2.75359396e-03]
+ [ 5.54157305e-06 -5.89792943e-03]
+ [-2.19828926e-05  3.27681899e-02]
+ [-2.99106778e-05  7.32395449e-04]
+ [-2.31914548e-03 -6.29947707e-02]
+ [ 3.92119138e-04 -3.02117062e-03]
+ [ 2.06176683e-05 -4.99974145e-03]
+ [ 9.22138104e-04  1.17491400e-04]
+ [ 9.91939851e-06  4.61770147e-02]
+ [-3.99430683e-05 -3.51103063e-06]
+ [ 3.69007685e-05 -9.93673280e-02]
+ [ 6.14764804e-06 -4.78246482e-03]
+ [-4.29073179e-06  1.09374174e-03]
+ [-3.51251801e-05  1.47030281e-03]
+ [-9.27553992e-06  6.89680269e-03]
+ [ 1.31987044e-05 -3.92657379e-03]
+ [ 1.30114831e-05  1.44141563e-03]
+ [-1.76193733e-02 -6.29887916e-03]
+ [ 2.25001531e-05 -2.92075682e-03]
+ [-4.67903010e-06  5.34707913e-03]
+ [-5.70543216e-06  6.68109115e-03]
+ [ 3.27367889e-05  2.13431055e-03]
+ [-2.13218464e-05  1.05153746e-03]
+ [-2.37695349e-05  3.58916586e-04]
+ [-9.49738251e-07  4.48117442e-02]
+ [-3.03524303e-06 -2.06438646e-01]
+ [ 8.90066622e-06  6.16687648e-02]
+ [-3.39448598e-05  1.37945324e-01]
+ [-1.43776206e-05  4.59555862e-03]
+ [-1.58381298e-01 -6.03115791e-03]
+ [-2.07871781e-05  3.34967230e-03]
+ [-1.11792315e-06 -5.16425772e-03]
+ [-2.83038153e-05  1.03646047e-01]
+ [-1.10940036e-05 -7.18200430e-02]
+ [ 1.36233630e-05  2.37011770e-03]
+ [-2.44944962e-03  5.06398780e-03]
+ [ 1.85332847e-05  2.39482988e-02]
+ [-2.39349501e-05  2.69725244e-03]
+ [-1.60064719e-05  4.55744984e-03]
+ [ 1.90360861e-05  3.10006700e-02]
+ [-2.52499685e-05 -1.66776448e-01]
+ [-1.48518102e-05 -1.95476376e-02]
+ [-3.82672715e-06  5.32615045e-03]] 
+
+	  - Gammas: 
+ [[8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]
+ [8.667348e-08 8.667348e-08]]
+
+Number of parameters in the model: 278592

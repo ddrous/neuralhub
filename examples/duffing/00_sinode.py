@@ -38,21 +38,26 @@ import time
 
 #%%
 
-SEED = 2026
+SEED = 2024
+
+dict_size = 2
+mlp_hidden_size = 32
+mlp_depth = 4
 
 ## Optimiser hps
-init_lr = 5e-4
+init_lr = 1e-4
+sched_factor = 1.0
 
-epsilon = 1e-1  ## For contrastive loss
-eta_inv, eta_cont, eta_spar = 1e-2, 1e-4, 1e-1
+epsilon = 0e2  ## For contrastive loss
+eta_inv, eta_cont, eta_spar = 1e-2, 1e-4, 0e-3
 
 ## Training hps
-print_every = 100
-nb_epochs = 1000
-inner_steps = 50
+print_every = 1000
+nb_epochs = 50000
+inner_steps = 1
 
 ## Data generation hps
-T_horizon = 40
+T_horizon = 10
 skip = 100
 
 #%%
@@ -63,27 +68,38 @@ def duffing(t, state, a, b, c):
     dydt = a*y - x*(b + c*x**2)
     return [dxdt, dydt]
 
+def lotka_volterra(t, state, alpha, beta, delta, gamma):
+    x, y = state
+    dx_dt = alpha * x - beta * x * y
+    dy_dt = delta * x * y - gamma * y
+    return [dx_dt, dy_dt]
+
+
 # Parameters
-a, b, c = -1/2., -1, 1/10.
+# a, b, c = -1/2., -1, 1/10.
+alpha, beta, delta, gamma = 0.5, 0.75, 0.5, 0.5
 
 t_span = (0, T_horizon)
 t_eval = np.arange(t_span[0], t_span[1], 0.01)[::skip]
 
-init_conds = np.array([[-0.5, -1], [-0.5, -0.5], [-0.5, 0.5], 
-                       [-1.5, 1], 
-                    #    [-0.5, 1], 
-                       [-1, -1], [-1, -0.5], [-1, 0.5], [-1, 1], 
-                       [-2, -1], [-2, -0.5], [-2, 0.5], [-2, 1],
-                    #    [0.5, -1], [0.5, -0.5], [0.5, 0.5], [0.5, 1],
-                    #    [1, -1], [1, -0.5], [1, 0.5], [1, 1],
-                    #    [2, -1], [2, -0.5], [2, 0.5], [2, 1],
-                       ])
+# init_conds = np.array([[-0.5, -1], [-0.5, -0.5], [-0.5, 0.5], 
+#                        [-1.5, 1], 
+#                     #    [-0.5, 1], 
+#                        [-1, -1], [-1, -0.5], [-1, 0.5], [-1, 1], 
+#                        [-2, -1], [-2, -0.5], [-2, 0.5], [-2, 1],
+#                     #    [0.5, -1], [0.5, -0.5], [0.5, 0.5], [0.5, 1],
+#                     #    [1, -1], [1, -0.5], [1, 0.5], [1, 1],
+#                     #    [2, -1], [2, -0.5], [2, 0.5], [2, 1],
+#                        ])
+
+init_conds = np.array([[0.5, 0.5], [0.5, 1], [1, 0.5], [1, 1]])
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 train_data = []
 
 for state0 in init_conds:
-    sol = solve_ivp(duffing, t_span, state0, args=(a, b, c), t_eval=t_eval)
+    # sol = solve_ivp(duffing, t_span, state0, args=(a, b, c), t_eval=t_eval)
+    sol = solve_ivp(lotka_volterra, t_span, state0, args=(alpha, beta, delta, gamma), t_eval=t_eval)
     train_data.append(sol.y.T)
 
     ## Plot the phase space
@@ -106,9 +122,10 @@ class BasisFunction(eqx.Module):
     layers: jnp.ndarray
 
     def __init__(self, in_size, out_size, hidden_size, depth, activation, key=None):
-        keys = jax.random.split(key, num=depth)
+        keys = jax.random.split(key, num=depth+1)
 
         self.layers = []
+
         for i in range(depth):
             if i==0:
                 layer = eqx.nn.Linear(in_size, hidden_size, key=keys[i])
@@ -132,7 +149,8 @@ class BasisFunction(eqx.Module):
         for layer in self.layers:
             y = layer(y)
         # return x + y
-        return (x + y).squeeze()
+        # return (x + y).squeeze()
+        return y.squeeze()
 
     def inv_call(self, x):
         """ Returns z such that x = z + MLP(z) via fixed point iteration """
@@ -143,8 +161,7 @@ class BasisFunction(eqx.Module):
 
 
 class VectorField(eqx.Module):
-    basis_funcs: jnp.ndarray
-
+    basis_funcs: BasisFunction
 
     def __init__(self, data_size, dict_size, mlp_hidden_size, mlp_depth, key=None):
         keys = jax.random.split(key, num=dict_size)
@@ -163,6 +180,10 @@ class VectorField(eqx.Module):
         lambdas, gammas = coeffs
         # assert lambdas.shape == gammas.shape == (self.dict_size, self.data_size)
 
+
+        # y_direct = evaluate_funcs_dir(self.basis_funcs, x).squeeze()
+        # y_inverse = evaluate_funcs_inv(self.basis_funcs, x).squeeze()
+
         ## Vectorise across both dimensions (because each model is made to work on a scalar x)
         @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
         @eqx.filter_vmap(in_axes=(None, 0))
@@ -174,14 +195,13 @@ class VectorField(eqx.Module):
         def evaluate_funcs_inv(model, x):
             return model.inv_call(x)
 
-        # y_direct = evaluate_funcs_dir(self.basis_funcs, x).squeeze()
-        # y_inverse = evaluate_funcs_inv(self.basis_funcs, x).squeeze()
 
         y_direct = evaluate_funcs_dir(self.basis_funcs, x)
         y_inverse = evaluate_funcs_inv(self.basis_funcs, x)
 
-        return jnp.sum(y_direct*lambdas + y_inverse*gammas, axis=0)
-        # return y_direct*lambdas[...,None] + y_inverse*gammas[...,None]
+        # return jnp.sum(y_direct*lambdas + y_inverse*gammas, axis=0)
+        # return jnp.sum(y_direct*lambdas, axis=0)
+        return jnp.array([y_direct[0,0], y_direct[1,1]])
 
 
 
@@ -195,6 +215,9 @@ class Coefficients(eqx.Module):
         # self.gammas = jax.random.uniform(key, shape=(dict_size, data_size))
 
         self.lambdas = jnp.zeros((dict_size, data_size))
+        self.lambdas = self.lambdas.at[0, 0].set(1.)            ## TODO: Remove this
+        self.lambdas = self.lambdas.at[1, 1].set(1.)
+
         self.gammas = jnp.zeros((dict_size, data_size))
 
     def __call__(self):
@@ -221,18 +244,26 @@ class NeuralODE(eqx.Module):
         def integrate(y0):
             sol = diffrax.diffeqsolve(
                     diffrax.ODETerm(self.vector_field),
-                    diffrax.Dopri5(),
+                    diffrax.Tsit5(),
                     args=(coeffs.lambdas, coeffs.gammas),
                     t0=t_eval[0],
                     t1=t_eval[-1],
-                    dt0=1e-4,
+                    dt0=1e-3,
                     y0=y0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+                    stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     # adjoint=diffrax.RecursiveCheckpointAdjoint(),
                     max_steps=4096
                 )
             return sol.ys
+
+            # sol = RK4(self.vector_field, 
+            #           (t_eval[0], t_eval[-1]), 
+            #           y0, 
+            #           (coeffs.lambdas, coeffs.gammas), 
+            #           t_eval=t_eval, 
+            #           subdivisions=4)
+            # return sol
 
         return eqx.filter_vmap(integrate)(x0s)
 
@@ -241,8 +272,8 @@ class NeuralODE(eqx.Module):
 
 model_keys = get_new_key(SEED, num=2)
 
-model = NeuralODE(data_size=2, dict_size=8, mlp_hidden_size=16, mlp_depth=3, key=model_keys[0])
-coeffs = Coefficients(data_size=2, dict_size=8, key=model_keys[1])
+model = NeuralODE(data_size=2, dict_size=dict_size, mlp_hidden_size=mlp_hidden_size, mlp_depth=mlp_depth, key=model_keys[0])
+coeffs = Coefficients(data_size=2, dict_size=dict_size, key=model_keys[1])
 
 
 
@@ -285,12 +316,12 @@ def loss_cont(model, coeffs, batch, key):
     ind = jax.random.permutation(key, model.dict_size)[:2]
     # w1, w2 = weights[ind, ...]
 
-    tot_error = 0.
+    tot_distance = 0.
     for d in range(len(weights)):
         w1, w2 = weights[d][ind[0], ...], weights[d][ind[1], ...]
-        tot_error += jnp.mean((w1-w2)**2)
+        tot_distance += jnp.mean((w1-w2)**2)
 
-    return epsilon - tot_error        ## Maximise the difference between the weights up to epsilon
+    return epsilon - tot_distance        ## Maximise the difference between the weights up to epsilon
 
 def loss_sparsity(model, coeffs, batch, key):
     """ Sparsity loss - Makes the coefficients sparse """
@@ -338,7 +369,6 @@ def train_step_coeffs(model, coeffs, batch, opt_state, key):
 
 total_steps = nb_epochs
 
-sched_factor = 0.5
 boundaries_and_scales={int(total_steps*0.25):sched_factor, int(total_steps*0.5):sched_factor, int(total_steps*0.75):sched_factor}
 
 # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
@@ -374,15 +404,15 @@ for epoch in range(nb_epochs):
     for i in range(0, nb_data_points, batch_size):
         batch = (data[0,i:i+batch_size,...], t_eval)
     
-        train_key, _ = jax.random.split(train_key)
-
         for _ in range(inner_steps):
+            train_key, _ = jax.random.split(train_key)
             model, coeffs, opt_state_node, loss = train_step_node(model, coeffs, batch, opt_state_node, train_key)
 
         loss_sum_node += loss
 
-        for _ in range(inner_steps):
-            model, coeffs, opt_state_coeffs, loss = train_step_coeffs(model, coeffs, batch, opt_state_coeffs, train_key)
+        # for _ in range(inner_steps):
+        #     train_key, _ = jax.random.split(train_key)
+        #     model, coeffs, opt_state_coeffs, loss = train_step_coeffs(model, coeffs, batch, opt_state_coeffs, train_key)
         loss_sum_coeffs += loss
 
         nb_batches += 1
@@ -397,6 +427,19 @@ for epoch in range(nb_epochs):
     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
         print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      LossCoeffs: {loss_epoch_coeffs:.8f}", flush=True)
 
+wall_time = time.time() - start_time
+time_in_hmsecs = seconds_to_hours(wall_time)
+print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+
+
+# %%
+
+## Shift the losses so that they start from 0
+losses_node, losses_coeffs = np.array(losses_node), np.array(losses_coeffs)
+min_loss = min(np.min(losses_node), np.min(losses_coeffs), 0.)
+losses_node += abs(min_loss)
+losses_coeffs += abs(min_loss)
+
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 ax = sbplot(losses_node, x_label='Epoch', y_label='L2', y_scale="log", label='Losses Node', ax=ax, dark_background=True);
@@ -406,12 +449,7 @@ plt.savefig(f"data/loss.png", dpi=300, bbox_inches='tight')
 plt.legend()
 # plt.show()
 
-wall_time = time.time() - start_time
-time_in_hmsecs = seconds_to_hours(wall_time)
-print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
-
-# %%
 
 # model = eqx.tree_deserialise_leaves("data/sinode_model.eqx", model)
 
@@ -439,7 +477,6 @@ colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w', 'orange', 'yellow', 'purple', 
 colors = colors*10
 
 for i in range(X.shape[0]):
-
     if i==0:
         sbplot(X_hat[i, :,0], X_hat[i, :,1], "o-", x_label='x', y_label='y', label=f'Pred', title=f'Phase space', ax=ax, alpha=0.5, color=colors[i])
         sbplot(X[i, :,0], X[i, :,1], "+", lw=1, label=f'True', ax=ax, color=colors[i])
@@ -452,11 +489,29 @@ plt.savefig(f"data/test_traj.png", dpi=300, bbox_inches='tight')
 
 #%% 
 
-eqx.tree_serialise_leaves("data/sinode_model_00.eqx", model)
+eqx.tree_serialise_leaves("data/sinode_model_01.eqx", model)
+
+
+
+#%% 
+
+## Print coeffs
+print("Coeffs: \n\t  - Lambdas: \n", coeffs.lambdas, "\n\n\t  - Gammas: \n", coeffs.gammas)
+
+## Count the number of paramters in the model
+params = eqx.filter(model, eqx.is_array)
+nb_params = jnp.sum(jnp.array([jnp.prod(jnp.array(p.shape)) for p in jax.tree.flatten(params)[0]]))
+print(f"\nNumber of parameters in the model: {nb_params}")
+
+## Print model basis functions
+print("Model basis functions: ", model.vector_field.basis_funcs.layers)
+# print("Model basis functions: ", model.vector_field.basis_funcs.layers[2].weight)
+
 
 # %% [markdown]
 
 # # Preliminary results
-# - Nothing yet
+# - If each MLP only take in a scalar input, then the model is able to learn the coupling terms
+# - Each MLP takes in all the state variables, but should idealy specialise ! (we don't want a mixture of experts)
 
 
