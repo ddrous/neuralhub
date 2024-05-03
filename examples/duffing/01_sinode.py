@@ -40,9 +40,10 @@ import time
 
 SEED = 2024
 
-dict_size = 4
+dict_size = 16
 mlp_hidden_size = 32
 mlp_depth = 4
+coeff_threshold = 1e-2
 
 ## Optimiser hps
 init_lr = 1e-4
@@ -52,7 +53,7 @@ epsilon = 0e2  ## For contrastive loss
 eta_inv, eta_cont, eta_spar = 1e-2, 1e-2, 1e-1
 
 ## Training hps
-print_every = 100
+print_every = 1000
 nb_epochs = 25000
 inner_steps_node = 1
 inner_steps_coeffs = 1
@@ -350,6 +351,10 @@ def train_step_coeffs(model, coeffs, batch, opt_state, key):
     updates, opt_state = opt_coeffs.update(grads, opt_state)
     coeffs = eqx.apply_updates(coeffs, updates)
 
+    ## Clip coefficients between -threshold and threshold
+    clip = lambda x: jnp.clip(x, -coeff_threshold, coeff_threshold)
+    coeffs = jax.tree.map(clip, coeffs)
+
     return model, coeffs, opt_state, loss
 
 
@@ -427,16 +432,16 @@ losses_node += abs(min_loss)
 losses_coeffs += abs(min_loss)
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-ax = sbplot(losses_node, x_label='Epoch', y_label='L2', y_scale="log", label='Losses Node', ax=ax, dark_background=True);
-ax = sbplot(losses_coeffs, ".", y_scale="log", label='Losses Coeffs', ax=ax, dark_background=True);
+# ax = sbplot(losses_node, x_label='Epoch', y_label='L2', y_scale="log", label='Losses Node', ax=ax, dark_background=True);
+ax = sbplot(losses_coeffs[::], ".", y_scale="log", label='Losses Coeffs', ax=ax, dark_background=True);
 
 plt.savefig(f"data/loss.png", dpi=300, bbox_inches='tight')
 plt.legend()
 # plt.show()
 
+# losses_coeffs
 
-
-# model = eqx.tree_deserialise_leaves("data/sinode_model.eqx", model)
+# model = eqx.tree_deise_leaves("data/sinode_model.eqx", model)
 
 
 # %%
@@ -475,14 +480,19 @@ plt.savefig(f"data/test_traj.png", dpi=300, bbox_inches='tight')
 
 #%% 
 
-eqx.tree_serialise_leaves("data/sinode_model_01.eqx", model)
+eqx.tree_serialise_leaves("data/sinode_model_02.eqx", model)
 
 
 
 #%% 
 
-## Print coeffs
-print("Coeffs: \n\t  - Lambdas: \n", coeffs.lambdas, "\n\n\t  - Gammas: \n", coeffs.gammas)
+# ## Print coeffs
+# print("Coeffs: \n\t  - Lambdas: \n", coeffs.lambdas, "\n\n\t  - Gammas: \n", coeffs.gammas)
+print("Coeffs: \n\t  - Lambdas: \n", coeffs.lambdas)
+
+## Print cloeffs lambda with abs > 1e-2
+active_coeffs = jnp.where(jnp.abs(coeffs.lambdas)>1e-2, 1, 0)
+print("Active coefficients lambda: \n", active_coeffs)
 
 ## Count the number of paramters in the model
 params = eqx.filter(model, eqx.is_array)
@@ -494,9 +504,9 @@ print(f"\nNumber of parameters in the model: {nb_params}")
 # print("Model basis functions: ", model.vector_field.basis_funcs.layers[2].weight)
 
 
-## Evaluate the vector field a few points
-print("Vector field at [1,1]: \n", evaluate_funcs_dir(model.vector_field.basis_funcs, jnp.array([1., 1.])))
-print("Vector field at [2,2]: \n", evaluate_funcs_dir(model.vector_field.basis_funcs, jnp.array([2., 2.])))
+# ## Evaluate the vector field a few points
+# print("Vector field at [1,1]: \n", evaluate_funcs_dir(model.vector_field.basis_funcs, jnp.array([1., 1.])))
+# print("Vector field at [2,2]: \n", evaluate_funcs_dir(model.vector_field.basis_funcs, jnp.array([2., 2.])))
 
 
 # %% [markdown]
