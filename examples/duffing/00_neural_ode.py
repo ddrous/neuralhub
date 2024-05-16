@@ -51,7 +51,7 @@ decay_rate = 0.9
 
 ## Training hps
 print_every = 1000
-nb_epochs = 50000
+nb_epochs = 5000
 # batch_size = 128*10
 
 skip = 100
@@ -105,6 +105,9 @@ ax.set_title('Phase Space')
 data = np.stack(train_data)[None, ...]
 
 
+## Print shapes
+print("Data shape:", data.shape)
+
 # %%
 
 def topk_routing(x, k):
@@ -143,131 +146,141 @@ def thin_plate(r, a):
 # def polyharmonic(x, center, a=1):
 #     return polyharmonic_func(distance(x, center), a)
 
-# class NeuralNet(eqx.Module):
-#     centers: jnp.ndarray
-#     shapes: jnp.ndarray     ## Widths for the gaussian RBF network
-#     weights: jnp.ndarray
-
-#     def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
-#         keys = get_new_key(key, num=4)
-
-#         centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=4.)
-#         centers_y = jax.random.uniform(keys[3], (nb_centers, 1), minval=-1.5, maxval=1.5)
-#         self.centers = jnp.concatenate([centers_x, centers_y], axis=1)
-
-#         self.shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
-#         self.weights = eqx.nn.Linear(nb_centers, out_size, key=keys[2])
-
-#     def __call__(self, x, t):
-#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-#         dists_squared = jax.vmap(distance, in_axes=(0, None))(self.centers, x)
-#         activations = jax.vmap(gaussian_rbf, in_axes=(0, 0))(dists_squared, self.shapes)
-#         return self.weights(activations)
-
-
-# class Processor(eqx.Module):
-#     neuralnet: NeuralNet
-#     params_router: jnp.ndarray
-
-#     def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
-#         keys = get_new_key(key, num=2)
-#         self.neuralnet = NeuralNet(in_size, nb_centers, out_size, key=keys[1])
-#         self.params_router = jax.random.normal(keys[0], (data_size,))
-
-#     def __call__(self, x, t):
-
-#         w_out = self.params_router@x.T
-#         gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
-
-#         nb_centers = self.neuralnet.centers.shape[0]
-#         ## Sample points to the left of line defined by params_router
-#         key = get_new_key(SEED, num=2)
-#         left_points_x = jax.random.uniform(key[0], (nb_centers, 1), minval=-4., maxval=4.)
-
-
-#         ## Sample points to the left of line defined by params_router
-
-#         # return self.physics(x, t) + self.augmentation(x, t)
-#         return self.neuralnet(x, t)
-
-
-
-
-
 class NeuralNet(eqx.Module):
-    # centers: jnp.ndarray
-    # shapes: jnp.ndarray     ## Widths for the gaussian RBF network
+    centers: jnp.ndarray
+    shapes: jnp.ndarray     ## Widths for the gaussian RBF network
     weights: jnp.ndarray
 
     def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
         keys = get_new_key(key, num=4)
 
-        # centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=4.)
-        # centers_y = jax.random.uniform(keys[3], (nb_centers, 1), minval=-1.5, maxval=1.5)
-        # self.centers = jnp.concatenate([centers_x, centers_y], axis=1)
+        centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=4.)
+        centers_y = jax.random.uniform(keys[3], (nb_centers, 1), minval=-1.5, maxval=1.5)
+        self.centers = jnp.concatenate([centers_x, centers_y], axis=1)
 
-        # self.shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+        self.shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
         self.weights = eqx.nn.Linear(nb_centers, out_size, key=keys[2])
 
-    def __call__(self, x, t, centers, shapes):
+    def __call__(self, x, t):
         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        dists_squared = jax.vmap(distance, in_axes=(0, None))(centers, x)
-        activations = jax.vmap(gaussian_rbf, in_axes=(0, 0))(dists_squared, shapes)
-        # activations = jax.vmap(thin_plate, in_axes=(0, None))(dists_squared, 1)
-
+        dists_squared = jax.vmap(distance, in_axes=(0, None))(self.centers, x)
+        activations = jax.vmap(gaussian_rbf, in_axes=(0, 0))(dists_squared, self.shapes)
+        # activations = jax.vmap(polyharmonic, in_axes=(0, None))(jnp.sqrt(dists_squared), 1)
         return self.weights(activations)
-        # return jnp.nan_to_num(self.weights(activations), neginf=0., posinf=0.)
 
 
 class Processor(eqx.Module):
-    neuralnet: NeuralNet
-    params_router: jnp.ndarray
-    left_centers: jnp.ndarray
-    right_centers: jnp.ndarray
+    neuralnets: NeuralNet
+    # params_router: jnp.ndarray
 
-    left_shapes: jnp.ndarray
-    right_shapes: jnp.ndarray
+    def __init__(self, in_size=2, num_layers=1, nb_centers=10, out_size=2, key=None):
+        keys = get_new_key(key, num=num_layers)
 
-    def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
-        keys = get_new_key(key, num=5)
-        self.neuralnet = NeuralNet(in_size, nb_centers, out_size, key=keys[1])
-        self.params_router = jax.random.normal(keys[0], (in_size,))
+        if num_layers==1:
+            self.neuralnets = [NeuralNet(in_size, nb_centers, out_size, key=keys)]
+        else:
+            self.neuralnets = [NeuralNet(in_size, nb_centers, out_size, key=key) for key in keys]
+        # self.params_router = jax.random.normal(keys[0], (data_size,))
 
-        keys = get_new_key(key, num=2)
-        left_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=1)
-        left_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
-        self.left_centers = jnp.concatenate([left_centers_x, left_centers_y], axis=1)
-        self.left_shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+    def __call__(self, x, t, args):
 
-        keys = get_new_key(key, num=3)
-        right_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-1., maxval=4.)
-        right_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
-        self.right_centers = jnp.concatenate([right_centers_x, right_centers_y], axis=1)
-        self.right_shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+        # w_out = self.params_router@x.T
+        # gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
 
-    def __call__(self, x, t, key):
+        # nb_centers = self.neuralnet.centers.shape[0]
+        # ## Sample points to the left of line defined by params_router
+        # key = get_new_key(SEED, num=2)
+        # left_points_x = jax.random.uniform(key[0], (nb_centers, 1), minval=-4., maxval=4.)
 
-        w_out = self.params_router@x.T
-        gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
 
-        # nb_centers = self.neuralnet.weights.weight.shape[1]
+        # ## Sample points to the left of line defined by params_router
 
-        ## Sample points to the left of line defined by params_router
-        # keys = get_new_key(key, num=2)
-        # left_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=-1)
-        # left_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
-        # left_centers = jnp.concatenate([left_centers_x, left_centers_y], axis=1)
+        # # return self.physics(x, t) + self.augmentation(x, t)
+        # return self.neuralnet(x, t)
 
-        ## Sample points to the left of line defined by params_router
-        # keys = get_new_key(key, num=3)
-        # right_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=1., maxval=4.)
-        # right_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
-        # right_centers = jnp.concatenate([right_centers_x, right_centers_y], axis=1)
+        y = x
+        for net in self.neuralnets:
+            y = net(y, t)
+        return y
 
-        # shapes = jax.random.uniform(key, (nb_centers,), minval=0.1, maxval=10.)
 
-        # return self.physics(x, t) + self.augmentation(x, t)
-        return gate[0]*self.neuralnet(x, t, self.left_centers, self.left_shapes) + gate[1]*self.neuralnet(x, t, self.right_centers, self.right_shapes)
+
+
+
+# class NeuralNet(eqx.Module):
+#     # centers: jnp.ndarray
+#     # shapes: jnp.ndarray     ## Widths for the gaussian RBF network
+#     weights: jnp.ndarray
+
+#     def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
+#         keys = get_new_key(key, num=4)
+
+#         # centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=4.)
+#         # centers_y = jax.random.uniform(keys[3], (nb_centers, 1), minval=-1.5, maxval=1.5)
+#         # self.centers = jnp.concatenate([centers_x, centers_y], axis=1)
+
+#         # self.shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+#         self.weights = eqx.nn.Linear(nb_centers, out_size, key=keys[2])
+
+#     def __call__(self, x, t, centers, shapes):
+#         # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+#         dists_squared = jax.vmap(distance, in_axes=(0, None))(centers, x)
+#         activations = jax.vmap(gaussian_rbf, in_axes=(0, 0))(dists_squared, shapes)
+#         # activations = jax.vmap(thin_plate, in_axes=(0, None))(dists_squared, 1)
+
+#         return self.weights(activations)
+#         # return jnp.nan_to_num(self.weights(activations), neginf=0., posinf=0.)
+
+
+# class Processor(eqx.Module):
+#     neuralnet: NeuralNet
+#     params_router: jnp.ndarray
+#     left_centers: jnp.ndarray
+#     right_centers: jnp.ndarray
+
+#     left_shapes: jnp.ndarray
+#     right_shapes: jnp.ndarray
+
+#     def __init__(self, in_size=2, nb_centers=10, out_size=2, key=None):
+#         keys = get_new_key(key, num=5)
+#         self.neuralnet = NeuralNet(in_size, nb_centers, out_size, key=keys[1])
+#         self.params_router = jax.random.normal(keys[0], (in_size,))
+
+#         keys = get_new_key(key, num=2)
+#         left_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=1)
+#         left_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
+#         self.left_centers = jnp.concatenate([left_centers_x, left_centers_y], axis=1)
+#         self.left_shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+
+#         keys = get_new_key(key, num=3)
+#         right_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-1., maxval=4.)
+#         right_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
+#         self.right_centers = jnp.concatenate([right_centers_x, right_centers_y], axis=1)
+#         self.right_shapes = jax.random.uniform(keys[1], (nb_centers,), minval=0.1, maxval=10.)
+
+#     def __call__(self, x, t, key):
+
+#         w_out = self.params_router@x.T
+#         gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
+
+#         # nb_centers = self.neuralnet.weights.weight.shape[1]
+
+#         ## Sample points to the left of line defined by params_router
+#         # keys = get_new_key(key, num=2)
+#         # left_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=-4., maxval=-1)
+#         # left_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
+#         # left_centers = jnp.concatenate([left_centers_x, left_centers_y], axis=1)
+
+#         ## Sample points to the left of line defined by params_router
+#         # keys = get_new_key(key, num=3)
+#         # right_centers_x = jax.random.uniform(keys[0], (nb_centers, 1), minval=1., maxval=4.)
+#         # right_centers_y = jax.random.uniform(keys[1], (nb_centers, 1), minval=-1.5, maxval=1.5)
+#         # right_centers = jnp.concatenate([right_centers_x, right_centers_y], axis=1)
+
+#         # shapes = jax.random.uniform(key, (nb_centers,), minval=0.1, maxval=10.)
+
+#         # return self.physics(x, t) + self.augmentation(x, t)
+#         return gate[0]*self.neuralnet(x, t, self.left_centers, self.left_shapes) + gate[1]*self.neuralnet(x, t, self.right_centers, self.right_shapes)
 
 
 
@@ -276,7 +289,7 @@ class Processor(eqx.Module):
 
 model_keys = get_new_key(SEED, num=2)
 # model = Processor(data_size=2, int_size=32, context_size=16, key=model_keys[0])
-model = Processor(in_size=2, nb_centers=256*32, out_size=2, key=model_keys[0])
+model = Processor(in_size=2, num_layers=2, nb_centers=16*8, out_size=2, key=model_keys[0])
 
 
 params, static = eqx.partition(model, eqx.is_array)
@@ -461,110 +474,126 @@ eqx.tree_serialise_leaves("data/model_06.eqx", model)
 # 
 
 
+
 # %%
 
-## Check if the router has identified the correct attractor
-
-# Samples points in the rectangle [-4,4]x[-1.5,1.5]
-# import numpy as np
-res = 50
-x0s = np.array([[x, y] for x in np.linspace(-4, 4, res) for y in np.linspace(-1.5, 1.5, res)])
-
-def classify_bassin(model, x0):
-
-    # w_out = x0
-    # for layer in model.layers_rout:
-    #     w_out = layer(w_out)
-    # return jnp.argmax(w_out)
-
-    w_out = model.params_router@x0.T
-    return (w_out>0).astype(int)
-
-
-
-
-y0s = jax.vmap(classify_bassin, in_axes=(None, 0))(model, x0s)
-
+## Plots the positions of neuralnet centroids
 plt.figure(figsize=(10, 5))
-plt.scatter(x0s[:, 0], x0s[:, 1], c=y0s, s=5, cmap='coolwarm')
-plt.xlabel('Displacement (x)')
-plt.ylabel('Velocity (y)')
-plt.title('Basins of attraction')
-# plt.grid(True)
-plt.show()
+
+net = model.neuralnets[0]
+plt.scatter(net.centers[:, 0], net.centers[:, 1], c='r', s=5, label='Expert 1')
+
+net = model.neuralnets[1]
+plt.scatter(net.centers[:, 0], net.centers[:, 1], c='b', s=5, label='Expert 1')
+
+
+
 
 
 # %%
-## Predict all trajectories using only one expert
 
-def test_expert(model, batch, expert=0):
-    X0, t = batch
+# ## Check if the router has identified the correct attractor
 
-    # def rhs(x, t):
-    #     y = x
-    #     layers = model.layers1 if expert==0 else model.layers2
-    #     for layer in layers:
-    #         y = layer(y)
-    #     return y
+# # Samples points in the rectangle [-4,4]x[-1.5,1.5]
+# # import numpy as np
+# res = 50
+# x0s = np.array([[x, y] for x in np.linspace(-4, 4, res) for y in np.linspace(-1.5, 1.5, res)])
 
-    ## New model with layers1 equal to -layers2
+# def classify_bassin(model, x0):
 
-    # params, static = eqx.partition(model, eqx.is_array)
-    # layers = jax.tree_util.tree_map(lambda x:-x, params.layers2)
-    # params = eqx.tree_at(lambda m: m.layers1, model, layers)
-    # model = eqx.combine(params, static)
+#     # w_out = x0
+#     # for layer in model.layers_rout:
+#     #     w_out = layer(w_out)
+#     # return jnp.argmax(w_out)
 
-    # def rhs(x, t):
-    #     ## Top 1 routing function
-    #     # w_out = x
-    #     # for layer in model.layers_rout:
-    #     #     w_out = layer(w_out)
-    #     # gate = jax.nn.softmax(topk_routing(w_out, 1))
-
-    #     w_out = model.params_router@x.T
-    #     gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
-
-    #     y1 = x
-    #     y2 = x
-    #     for i in range(len(model.layers1)):
-    #         y1 = model.layers1[i](y1)
-    #         y2 = model.layers2[i](y2)
-
-    #     # return gate[0]*y1
-    #     # return gate[0]*y1 + gate[1]*y2
-    #     return gate[0]*y1 if expert==0 else gate[1]*y2
-    rhs = model
+#     w_out = model.params_router@x0.T
+#     return (w_out>0).astype(int)
 
 
-    # X_hat = jax.vmap(integrator, in_axes=(None, 0, None, None, None, None, None, None, None))(rhs, X0, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
-    X_hat = jax.vmap(integrator, in_axes=(None, 0, None, None, None, None, None, None, None, None))(model, X0, t, train_key, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
-
-    return X_hat
 
 
-# X = data[0, :, 0, :]
-res = 10
-X = np.array([[x, y] for x in np.linspace(-4, 4, res) for y in np.linspace(-1.5, 1.5, res)])
-print(X.shape)
+# y0s = jax.vmap(classify_bassin, in_axes=(None, 0))(model, x0s)
 
-expert_id = 0
+# plt.figure(figsize=(10, 5))
+# plt.scatter(x0s[:, 0], x0s[:, 1], c=y0s, s=5, cmap='coolwarm')
+# plt.xlabel('Displacement (x)')
+# plt.ylabel('Velocity (y)')
+# plt.title('Basins of attraction')
+# # plt.grid(True)
+# plt.show()
 
-# X_hat = test_expert(model, (X[:, 0,:], t), expert=expert_id)
-t = np.linspace(t_span[0], t_span[1], 400)
-X_hat = test_expert(model, (X[:,:], t), expert=expert_id)
 
-fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+# # %%
+# ## Predict all trajectories using only one expert
 
-for i in range(X.shape[0]):
-    if i==0:
-        sbplot(X_hat[i, :,0], X_hat[i, :,1], "+-", x_label='x', y_label='y', label=f'Pred', title=f'Phase space - Expert {expert_id}', ax=ax, alpha=0.5, color=colors[i])
-        # sbplot(X[i, :,0], X[i, :,1], "o", lw=1, label=f'True', ax=ax, color=colors[i])
-    else:
-        sbplot(X_hat[i, :,0], X_hat[i, :,1], "-", x_label='x', y_label='y', ax=ax, alpha=0.5, color=colors[i])
-        # sbplot(X[i, :,0], X[i, :,1], "o", lw=1, ax=ax, color=colors[i])
+# def test_expert(model, batch, expert=0):
+#     X0, t = batch
 
-# ax.set_xlim(-4, 4)
-# ax.set_ylim(-1.5, 1.5)
+#     # def rhs(x, t):
+#     #     y = x
+#     #     layers = model.layers1 if expert==0 else model.layers2
+#     #     for layer in layers:
+#     #         y = layer(y)
+#     #     return y
 
-# plt.savefig(f"data/coda_test_env{e}_traj{i}.png", dpi=300, bbox_inches='tight')
-# plt.savefig(f"data/test_simple.png", dpi=300, bbox_inches='tight')
+#     ## New model with layers1 equal to -layers2
+
+#     # params, static = eqx.partition(model, eqx.is_array)
+#     # layers = jax.tree_util.tree_map(lambda x:-x, params.layers2)
+#     # params = eqx.tree_at(lambda m: m.layers1, model, layers)
+#     # model = eqx.combine(params, static)
+
+#     # def rhs(x, t):
+#     #     ## Top 1 routing function
+#     #     # w_out = x
+#     #     # for layer in model.layers_rout:
+#     #     #     w_out = layer(w_out)
+#     #     # gate = jax.nn.softmax(topk_routing(w_out, 1))
+
+#     #     w_out = model.params_router@x.T
+#     #     gate = jax.lax.cond(w_out>0, lambda x: jnp.array([1., 0.]), lambda x: jnp.array([0., 1.]), x)
+
+#     #     y1 = x
+#     #     y2 = x
+#     #     for i in range(len(model.layers1)):
+#     #         y1 = model.layers1[i](y1)
+#     #         y2 = model.layers2[i](y2)
+
+#     #     # return gate[0]*y1
+#     #     # return gate[0]*y1 + gate[1]*y2
+#     #     return gate[0]*y1 if expert==0 else gate[1]*y2
+#     rhs = model
+
+
+#     # X_hat = jax.vmap(integrator, in_axes=(None, 0, None, None, None, None, None, None, None))(rhs, X0, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
+#     X_hat = jax.vmap(integrator, in_axes=(None, 0, None, None, None, None, None, None, None, None))(model, X0, t, train_key, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
+
+#     return X_hat
+
+
+# # X = data[0, :, 0, :]
+# res = 10
+# X = np.array([[x, y] for x in np.linspace(-4, 4, res) for y in np.linspace(-1.5, 1.5, res)])
+# print(X.shape)
+
+# expert_id = 0
+
+# # X_hat = test_expert(model, (X[:, 0,:], t), expert=expert_id)
+# t = np.linspace(t_span[0], t_span[1], 400)
+# X_hat = test_expert(model, (X[:,:], t), expert=expert_id)
+
+# fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+# for i in range(X.shape[0]):
+#     if i==0:
+#         sbplot(X_hat[i, :,0], X_hat[i, :,1], "+-", x_label='x', y_label='y', label=f'Pred', title=f'Phase space - Expert {expert_id}', ax=ax, alpha=0.5, color=colors[i])
+#         # sbplot(X[i, :,0], X[i, :,1], "o", lw=1, label=f'True', ax=ax, color=colors[i])
+#     else:
+#         sbplot(X_hat[i, :,0], X_hat[i, :,1], "-", x_label='x', y_label='y', ax=ax, alpha=0.5, color=colors[i])
+#         # sbplot(X[i, :,0], X[i, :,1], "o", lw=1, ax=ax, color=colors[i])
+
+# # ax.set_xlim(-4, 4)
+# # ax.set_ylim(-1.5, 1.5)
+
+# # plt.savefig(f"data/coda_test_env{e}_traj{i}.png", dpi=300, bbox_inches='tight')
+# # plt.savefig(f"data/test_simple.png", dpi=300, bbox_inches='tight')
