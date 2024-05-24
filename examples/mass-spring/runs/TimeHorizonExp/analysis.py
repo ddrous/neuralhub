@@ -22,7 +22,7 @@ for i in range(nb_runs):
 
 epochs = np.arange(losses[0].shape[0]+1)
 losses = jnp.stack(losses)
-
+Ts = np.array(Ts)
 
 
 
@@ -45,8 +45,9 @@ ax.set_xticks(np.arange(0, losses[0].shape[0]+1, 500))
 ax.set_xticklabels(epochs[::500])
 
 ## Set y ticks and labels to the time horizon
-ax.set_yticks(np.arange(len(Ts))[::10])
-ax.set_yticklabels(Ts[::10])
+Ts_list = np.linspace(Ts.min(), Ts.max(), 5)
+ax.set_yticks(np.arange(len(Ts))[::len(Ts)//4])
+ax.set_yticklabels(Ts_list)
 
 plt.savefig(f"results/loss_imshow.png", dpi=300, bbox_inches='tight')
 # %%
