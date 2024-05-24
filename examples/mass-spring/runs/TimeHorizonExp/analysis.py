@@ -14,15 +14,19 @@ nb_runs = 101
 
 Ts = []
 losses = []
+walltimes = []
 
 for i in range(nb_runs):
     data = np.load(f"results/{i:05d}.npz")
+
     Ts.append(data['time_horizon'])
     losses.append(data['losses'])
+    walltimes.append(data['wall_time'])
 
 epochs = np.arange(losses[0].shape[0]+1)
 losses = jnp.stack(losses)
 Ts = np.array(Ts)
+walltimes = np.array(walltimes)
 
 
 
@@ -63,3 +67,16 @@ ax.set_title(f'Loss Curve for T = {Ts[50]:.1f}')
 
 plt.legend()
 plt.savefig(f"results/loss_curve_{Ts[50]}.png", dpi=300, bbox_inches='tight')
+
+
+#%%
+## 1D plot of the wall time against the time horizon T
+
+fig, ax = plt.subplots(1, 1, figsize=(8.5, 3))
+ax.plot(Ts, walltimes)
+
+ax.set_xlabel('Time horizon T')
+ax.set_ylabel('Wall time (s)')
+ax.set_title('GD Training Time against Time Horizon')
+
+plt.savefig(f"results/walltimes.png", dpi=300, bbox_inches='tight')
