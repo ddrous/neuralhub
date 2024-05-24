@@ -1,0 +1,1616 @@
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  5.0
+  - Savepath:  results/00000.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.80141544
+    Epoch:   500      Loss: 0.00000006
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 20 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  5.2
+  - Savepath:  results/00001.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.76896274
+    Epoch:   500      Loss: 0.00000006
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000007
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 21 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  5.4
+  - Savepath:  results/00002.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.73149359
+    Epoch:   500      Loss: 0.00000006
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000007
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 21 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  5.6
+  - Savepath:  results/00003.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.69061410
+    Epoch:   500      Loss: 0.00000009
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 21 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  5.8
+  - Savepath:  results/00004.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.64793241
+    Epoch:   500      Loss: 0.00000023
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 22 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  6.0
+  - Savepath:  results/00005.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.60497200
+    Epoch:   500      Loss: 0.00000235
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 22 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  6.2
+  - Savepath:  results/00006.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.56313467
+    Epoch:   500      Loss: 0.00000029
+    Epoch:  1000      Loss: 0.00000007
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 22 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  6.4
+  - Savepath:  results/00007.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.52363956
+    Epoch:   500      Loss: 0.00000694
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 22 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  6.6
+  - Savepath:  results/00008.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.48750353
+    Epoch:   500      Loss: 0.45898271
+    Epoch:  1000      Loss: 0.00000037
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 23 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  6.8
+  - Savepath:  results/00009.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.45548797
+    Epoch:   500      Loss: 0.00000019
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 23 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  7.0
+  - Savepath:  results/00010.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.42809331
+    Epoch:   500      Loss: 0.00000014
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 23 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  7.2
+  - Savepath:  results/00011.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40558195
+    Epoch:   500      Loss: 0.00000013
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000008
+
+Total GD training time: 22 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  7.4
+  - Savepath:  results/00012.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.38798964
+    Epoch:   500      Loss: 0.00000013
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 23 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  7.6
+  - Savepath:  results/00013.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.37514234
+    Epoch:   500      Loss: 0.00000020
+    Epoch:  1000      Loss: 0.00000009
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 23 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  7.800000000000001
+  - Savepath:  results/00014.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36671174
+    Epoch:   500      Loss: 0.00000017
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 25 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  8.0
+  - Savepath:  results/00015.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36224091
+    Epoch:   500      Loss: 0.00000029
+    Epoch:  1000      Loss: 0.00000009
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 24 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  8.2
+  - Savepath:  results/00016.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36118579
+    Epoch:   500      Loss: 0.00000027
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 25 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  8.4
+  - Savepath:  results/00017.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36293828
+    Epoch:   500      Loss: 0.00000034
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 24 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  8.6
+  - Savepath:  results/00018.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36686933
+    Epoch:   500      Loss: 0.00000043
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  8.8
+  - Savepath:  results/00019.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.37235975
+    Epoch:   500      Loss: 0.00000053
+    Epoch:  1000      Loss: 0.00000010
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 25 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  9.0
+  - Savepath:  results/00020.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.37880957
+    Epoch:   500      Loss: 0.00000064
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000010
+    Epoch:  1999      Loss: 0.00000011
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  9.2
+  - Savepath:  results/00021.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.38566029
+    Epoch:   500      Loss: 0.00000077
+    Epoch:  1000      Loss: 0.00000008
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 25 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  9.4
+  - Savepath:  results/00022.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.39237237
+    Epoch:   500      Loss: 0.00000089
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 25 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  9.600000000000001
+  - Savepath:  results/00023.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.39851272
+    Epoch:   500      Loss: 0.00000108
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  9.8
+  - Savepath:  results/00024.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40368414
+    Epoch:   500      Loss: 0.00000121
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  10.0
+  - Savepath:  results/00025.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40756392
+    Epoch:   500      Loss: 0.00000144
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  10.2
+  - Savepath:  results/00026.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40989733
+    Epoch:   500      Loss: 0.00000171
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  10.4
+  - Savepath:  results/00027.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.41051280
+    Epoch:   500      Loss: 0.00000218
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 26 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  10.600000000000001
+  - Savepath:  results/00028.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40931082
+    Epoch:   500      Loss: 0.00000273
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 27 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  10.8
+  - Savepath:  results/00029.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40626800
+    Epoch:   500      Loss: 0.00000363
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 28 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  11.0
+  - Savepath:  results/00030.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.40143263
+    Epoch:   500      Loss: 0.00000476
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 28 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  11.2
+  - Savepath:  results/00031.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.39492524
+    Epoch:   500      Loss: 0.00000621
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  11.4
+  - Savepath:  results/00032.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.38692510
+    Epoch:   500      Loss: 0.00000829
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 28 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  11.600000000000001
+  - Savepath:  results/00033.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.37766206
+    Epoch:   500      Loss: 0.00001084
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 28 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  11.8
+  - Savepath:  results/00034.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.36740446
+    Epoch:   500      Loss: 0.00001401
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000008
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  12.0
+  - Savepath:  results/00035.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.35645270
+    Epoch:   500      Loss: 0.00001761
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  12.2
+  - Savepath:  results/00036.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.34511542
+    Epoch:   500      Loss: 0.00002192
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  12.4
+  - Savepath:  results/00037.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.33369672
+    Epoch:   500      Loss: 0.00002661
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000007
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  12.600000000000001
+  - Savepath:  results/00038.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.32248843
+    Epoch:   500      Loss: 0.00003152
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 29 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  12.8
+  - Savepath:  results/00039.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.31175244
+    Epoch:   500      Loss: 0.00003730
+    Epoch:  1000      Loss: 0.00000003
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 30 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  13.0
+  - Savepath:  results/00040.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.30172241
+    Epoch:   500      Loss: 0.00004335
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000008
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 30 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  13.200000000000001
+  - Savepath:  results/00041.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.29257774
+    Epoch:   500      Loss: 0.00004992
+    Epoch:  1000      Loss: 0.00000003
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 30 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  13.4
+  - Savepath:  results/00042.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.28445220
+    Epoch:   500      Loss: 0.00005781
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 30 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  13.6
+  - Savepath:  results/00043.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.27743161
+    Epoch:   500      Loss: 0.00006753
+    Epoch:  1000      Loss: 0.00000003
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 30 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  13.8
+  - Savepath:  results/00044.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.27155161
+    Epoch:   500      Loss: 0.00007908
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 31 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  14.0
+  - Savepath:  results/00045.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.26680183
+    Epoch:   500      Loss: 0.00009351
+    Epoch:  1000      Loss: 0.00000008
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 31 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  14.200000000000001
+  - Savepath:  results/00046.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.26313138
+    Epoch:   500      Loss: 0.00011143
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 32 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  14.4
+  - Savepath:  results/00047.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.26045549
+    Epoch:   500      Loss: 0.00013347
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 32 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  14.600000000000001
+  - Savepath:  results/00048.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25866199
+    Epoch:   500      Loss: 0.00016217
+    Epoch:  1000      Loss: 0.00000004
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 32 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  14.8
+  - Savepath:  results/00049.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25761294
+    Epoch:   500      Loss: 0.00019806
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 32 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  15.0
+  - Savepath:  results/00050.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25716221
+    Epoch:   500      Loss: 0.00024285
+    Epoch:  1000      Loss: 0.00000008
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 32 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  15.200000000000001
+  - Savepath:  results/00051.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25715411
+    Epoch:   500      Loss: 0.00029856
+    Epoch:  1000      Loss: 0.00000005
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 33 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  15.4
+  - Savepath:  results/00052.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25743353
+    Epoch:   500      Loss: 0.00036858
+    Epoch:  1000      Loss: 0.00000006
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 33 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  15.600000000000001
+  - Savepath:  results/00053.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25784636
+    Epoch:   500      Loss: 0.00045650
+    Epoch:  1000      Loss: 0.00000008
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000007
+
+Total GD training time: 33 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  15.8
+  - Savepath:  results/00054.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25824988
+    Epoch:   500      Loss: 0.00056641
+    Epoch:  1000      Loss: 0.00000008
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 33 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  16.0
+  - Savepath:  results/00055.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25851512
+    Epoch:   500      Loss: 0.00070426
+    Epoch:  1000      Loss: 0.00000009
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  16.200000000000003
+  - Savepath:  results/00056.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25852847
+    Epoch:   500      Loss: 0.00087784
+    Epoch:  1000      Loss: 0.00000011
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  16.4
+  - Savepath:  results/00057.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25819647
+    Epoch:   500      Loss: 0.00109564
+    Epoch:  1000      Loss: 0.00000014
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  16.6
+  - Savepath:  results/00058.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25744581
+    Epoch:   500      Loss: 0.00136649
+    Epoch:  1000      Loss: 0.00000018
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  16.8
+  - Savepath:  results/00059.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25622642
+    Epoch:   500      Loss: 0.00170985
+    Epoch:  1000      Loss: 0.00000025
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  17.0
+  - Savepath:  results/00060.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25451112
+    Epoch:   500      Loss: 0.00213132
+    Epoch:  1000      Loss: 0.00000029
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 34 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  17.200000000000003
+  - Savepath:  results/00061.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.25229514
+    Epoch:   500      Loss: 0.00265915
+    Epoch:  1000      Loss: 0.00000040
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 35 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  17.4
+  - Savepath:  results/00062.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.24959528
+    Epoch:   500      Loss: 0.00329554
+    Epoch:  1000      Loss: 0.00000052
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 35 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  17.6
+  - Savepath:  results/00063.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.24644828
+    Epoch:   500      Loss: 0.00406670
+    Epoch:  1000      Loss: 0.00000068
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 35 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  17.8
+  - Savepath:  results/00064.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.24290848
+    Epoch:   500      Loss: 0.00499340
+    Epoch:  1000      Loss: 0.00000091
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 35 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  18.0
+  - Savepath:  results/00065.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.23904240
+    Epoch:   500      Loss: 0.00608808
+    Epoch:  1000      Loss: 0.00000115
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 35 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  18.200000000000003
+  - Savepath:  results/00066.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.23492849
+    Epoch:   500      Loss: 0.00737348
+    Epoch:  1000      Loss: 0.00000153
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  18.4
+  - Savepath:  results/00067.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.23065412
+    Epoch:   500      Loss: 0.00886318
+    Epoch:  1000      Loss: 0.00000197
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  18.6
+  - Savepath:  results/00068.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.22630560
+    Epoch:   500      Loss: 0.01056656
+    Epoch:  1000      Loss: 0.00000245
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  18.8
+  - Savepath:  results/00069.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.22196960
+    Epoch:   500      Loss: 0.01251614
+    Epoch:  1000      Loss: 0.00000318
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  19.0
+  - Savepath:  results/00070.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.21772814
+    Epoch:   500      Loss: 0.01472536
+    Epoch:  1000      Loss: 0.00000405
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  19.200000000000003
+  - Savepath:  results/00071.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.21365583
+    Epoch:   500      Loss: 0.01721453
+    Epoch:  1000      Loss: 0.00000515
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 36 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  19.4
+  - Savepath:  results/00072.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.20981765
+    Epoch:   500      Loss: 0.02071674
+    Epoch:  1000      Loss: 0.00000654
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 37 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  19.6
+  - Savepath:  results/00073.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.20626402
+    Epoch:   500      Loss: 0.04755616
+    Epoch:  1000      Loss: 0.00000808
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 37 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  19.8
+  - Savepath:  results/00074.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.20303285
+    Epoch:   500      Loss: 0.07527210
+    Epoch:  1000      Loss: 0.00001037
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 37 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  20.0
+  - Savepath:  results/00075.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.20014846
+    Epoch:   500      Loss: 0.09208942
+    Epoch:  1000      Loss: 0.00001336
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 37 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  20.200000000000003
+  - Savepath:  results/00076.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.19762027
+    Epoch:   500      Loss: 0.10303922
+    Epoch:  1000      Loss: 0.00001697
+    Epoch:  1500      Loss: 0.00000003
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 37 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  20.4
+  - Savepath:  results/00077.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.19544435
+    Epoch:   500      Loss: 0.11075315
+    Epoch:  1000      Loss: 0.00002191
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 38 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  20.6
+  - Savepath:  results/00078.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.19360435
+    Epoch:   500      Loss: 0.11645322
+    Epoch:  1000      Loss: 0.00002853
+    Epoch:  1500      Loss: 0.00000004
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 38 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  20.8
+  - Savepath:  results/00079.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.19207466
+    Epoch:   500      Loss: 0.12082442
+    Epoch:  1000      Loss: 0.00003711
+    Epoch:  1500      Loss: 0.00000005
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 38 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  21.0
+  - Savepath:  results/00080.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.19082010
+    Epoch:   500      Loss: 0.12423950
+    Epoch:  1000      Loss: 0.00004848
+    Epoch:  1500      Loss: 0.00000006
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 38 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  21.2
+  - Savepath:  results/00081.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18979752
+    Epoch:   500      Loss: 0.12694873
+    Epoch:  1000      Loss: 0.00006309
+    Epoch:  1500      Loss: 0.00000007
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 38 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  21.400000000000002
+  - Savepath:  results/00082.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18896079
+    Epoch:   500      Loss: 0.12913772
+    Epoch:  1000      Loss: 0.00008384
+    Epoch:  1500      Loss: 0.00000009
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 39 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  21.6
+  - Savepath:  results/00083.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18826056
+    Epoch:   500      Loss: 0.13092475
+    Epoch:  1000      Loss: 0.00011089
+    Epoch:  1500      Loss: 0.00000012
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 39 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  21.8
+  - Savepath:  results/00084.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18764663
+    Epoch:   500      Loss: 0.13235438
+    Epoch:  1000      Loss: 0.00014683
+    Epoch:  1500      Loss: 0.00000014
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 39 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  22.0
+  - Savepath:  results/00085.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18707049
+    Epoch:   500      Loss: 0.13348863
+    Epoch:  1000      Loss: 0.00019561
+    Epoch:  1500      Loss: 0.00000020
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 39 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  22.2
+  - Savepath:  results/00086.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18648553
+    Epoch:   500      Loss: 0.13438641
+    Epoch:  1000      Loss: 0.00025965
+    Epoch:  1500      Loss: 0.00000027
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 39 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  22.400000000000002
+  - Savepath:  results/00087.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18585098
+    Epoch:   500      Loss: 0.13508248
+    Epoch:  1000      Loss: 0.00034820
+    Epoch:  1500      Loss: 0.00000036
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 40 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  22.6
+  - Savepath:  results/00088.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18513060
+    Epoch:   500      Loss: 0.13561213
+    Epoch:  1000      Loss: 0.00046601
+    Epoch:  1500      Loss: 0.00000049
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 40 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  22.8
+  - Savepath:  results/00089.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18429697
+    Epoch:   500      Loss: 0.13599038
+    Epoch:  1000      Loss: 0.00062306
+    Epoch:  1500      Loss: 0.00000065
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 40 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  23.0
+  - Savepath:  results/00090.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18332648
+    Epoch:   500      Loss: 0.13624728
+    Epoch:  1000      Loss: 0.00083594
+    Epoch:  1500      Loss: 0.00000091
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 41 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  23.2
+  - Savepath:  results/00091.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18220508
+    Epoch:   500      Loss: 0.13639809
+    Epoch:  1000      Loss: 0.00111925
+    Epoch:  1500      Loss: 0.00000123
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 40 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  23.400000000000002
+  - Savepath:  results/00092.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.18092620
+    Epoch:   500      Loss: 0.13644819
+    Epoch:  1000      Loss: 0.00149416
+    Epoch:  1500      Loss: 0.00000173
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 40 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  23.6
+  - Savepath:  results/00093.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17948997
+    Epoch:   500      Loss: 0.13641879
+    Epoch:  1000      Loss: 0.00199638
+    Epoch:  1500      Loss: 0.00000235
+    Epoch:  1999      Loss: 0.00000002
+
+Total GD training time: 41 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  23.8
+  - Savepath:  results/00094.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17790532
+    Epoch:   500      Loss: 0.13631389
+    Epoch:  1000      Loss: 0.00265175
+    Epoch:  1500      Loss: 0.00000325
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 41 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  24.0
+  - Savepath:  results/00095.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17618608
+    Epoch:   500      Loss: 0.13614802
+    Epoch:  1000      Loss: 0.00351116
+    Epoch:  1500      Loss: 0.00000449
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 41 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  24.200000000000003
+  - Savepath:  results/00096.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17435157
+    Epoch:   500      Loss: 0.13592166
+    Epoch:  1000      Loss: 0.00462165
+    Epoch:  1500      Loss: 0.00000612
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 41 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  24.400000000000002
+  - Savepath:  results/00097.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17242599
+    Epoch:   500      Loss: 0.13564444
+    Epoch:  1000      Loss: 0.00604839
+    Epoch:  1500      Loss: 0.00000827
+    Epoch:  1999      Loss: 0.00000003
+
+Total GD training time: 42 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  24.6
+  - Savepath:  results/00098.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.17043459
+    Epoch:   500      Loss: 0.13532814
+    Epoch:  1000      Loss: 0.00784674
+    Epoch:  1500      Loss: 0.00001130
+    Epoch:  1999      Loss: 0.00000004
+
+Total GD training time: 42 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  24.8
+  - Savepath:  results/00099.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.16840696
+    Epoch:   500      Loss: 0.13497096
+    Epoch:  1000      Loss: 0.01008101
+    Epoch:  1500      Loss: 0.00001527
+    Epoch:  1999      Loss: 0.00000005
+
+Total GD training time: 42 secs
+
+
+############# Lotka-Volterra with Neural ODE #############
+
+  - Time Horizon T:  25.0
+  - Savepath:  results/00100.npz
+
+
+=== Beginning Training ... ===
+    Epoch:     0      Loss: 1.16637230
+    Epoch:   500      Loss: 0.13458283
+    Epoch:  1000      Loss: 0.01281561
+    Epoch:  1500      Loss: 0.00002078
+    Epoch:  1999      Loss: 0.00000006
+
+Total GD training time: 42 secs
+

@@ -38,7 +38,7 @@ if verbose:
     print("  - Savepath: ", savepath)
 
 ## Training hps
-print_every = 100
+print_every = 500
 nb_epochs = 2000
 batch_size = 1
 init_lr = 1e-1
