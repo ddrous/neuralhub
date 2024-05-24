@@ -14,7 +14,7 @@ print("Available devices:", jax.devices())
 
 from jax import config
 ##  Debug nans
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 
@@ -45,17 +45,17 @@ integrator = rk4_integrator
 # integrator = dopri_integrator
 
 ## Optimiser hps
-init_lr = 5e-3
+init_lr = 1e-2
 decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 1000
+nb_epochs = 2000
 # batch_size = 128*10
 batch_size = 1
 skip_steps = 1
 
-T = 15
+T = 25
 print("Time horizon:", T)
 
 #%%
@@ -91,9 +91,10 @@ class Processor(eqx.Module):
         #                 eqx.nn.Linear(8, 8, key=keys[1]), jax.nn.softplus,
         #                 eqx.nn.Linear(8, out_size, key=keys[2]) ]
 
-        # self.matrix = jax.random.uniform(keys[0], (in_size, out_size), minval=-1, maxval=0)
         self.matrix = jnp.array([[0., 0.], [0., 0.]])
         # self.k_mu = jnp.array([0., 0.])
+
+        # self.matrix = jnp.zeros((3,))
 
     def __call__(self, t, x, args):
 
@@ -107,6 +108,14 @@ class Processor(eqx.Module):
         # matrix = jnp.array([[0., 1.], [-k, -mu]])
 
         return self.matrix @ x
+
+
+        # matrix = jnp.array([[0., self.matrix[0,1]], [self.matrix[1,0], self.matrix[1,1]]])
+        # matrix = self.matrix.at[0,0].set(0)
+        # matrix = jnp.concatenate([jnp.array([0.]), self.matrix.flatten()[1:]]).reshape((2,2))
+
+        # matrix = jnp.concatenate([jnp.array([0.]), self.matrix]).reshape((2,2))
+        # return matrix @ x
 
 
 class NeuralODE(eqx.Module):
@@ -206,7 +215,6 @@ total_steps = nb_epochs
 #                                                                     int(total_steps*0.5):0.2,
 #                                                                     int(total_steps*0.75):0.5})
 sched = init_lr*1e1
-fig, ax = plt.subplots(1, 1, figsize=(6, 3.5))
 
 start_time = time.time()
 
@@ -239,18 +247,33 @@ for epoch in range(nb_epochs):
     losses.append(loss_epoch)
     theta_list.append(model.vector_field.matrix)
 
-    if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
+    if epoch%print_every==0 or epoch==nb_epochs-1:
         print(f"    Epoch: {epoch:-5d}      Loss: {loss_epoch:.8f}", flush=True)
 
+losses = np.stack(losses)
 
 wall_time = time.time() - start_time
 time_in_hmsecs = seconds_to_hours(wall_time)
 print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
 
+# %%
 
-# ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title=f'Loss for environment {e}', ax=ax);
-ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title='Loss', ax=ax);
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 3.5))
+
+ax = sbplot(losses, ".", x_label='Epoch', y_label='L2', y_scale="log", label='Loss', ax=ax);
+
+# Make a twin axis for the diff loss
+ax2 = ax.twinx()
+
+# Calculate the time(epoch)-derivitative of the loss
+diff_lim = 1e-3
+diff_losses = np.clip(np.gradient(losses), -diff_lim, diff_lim)
+ax2 = sbplot(diff_losses, "r", label='Diff Loss', ax=ax2);
+
+# plt.draw()
+
 plt.savefig(f"data/mass/loss_{SEED:05d}.png", dpi=300, bbox_inches='tight')
 # plt.show()
 plt.legend()
@@ -313,16 +336,17 @@ print(model.vector_field.matrix)
 
 ## Plot the loss landscape
 orig_model = eqx.partition(model, eqx.is_array)[0]  ## Just a copy
-theta_ids = (2, 3)       ## Indices of the parameters after flatening to plot
+theta_ids = (1, 2)       ## Indices of the parameters after flatening to plot
 
 
 thetas = jnp.array([x.flatten()[jnp.array(theta_ids)] for x in theta_list])
-# losses = jnp.array(losses)
 
 
 ## Sample matrices for the contourf plot
-theta_0s = jnp.linspace(-2, 2, 50)
-theta_1s = jnp.linspace(-2, 2, 50)
+t0_min, t0_max = -2, 1.5
+t1_min, t1_max = -2, 1.5
+theta_0s = jnp.linspace(t0_min, t0_max, 200)
+theta_1s = jnp.linspace(t1_min, t1_max, 200)
 theta_0s, theta_1s = jnp.meshgrid(theta_0s, theta_1s)
 theta_01s = jnp.stack([theta_0s.flatten(), theta_1s.flatten()], axis=-1)
 
@@ -339,7 +363,7 @@ def eval_loss_fn(theta_01):
 loss_evals = eval_loss_fn(theta_01s)
 
 
-# %%
+## %%
 ## Plot the loss landscape with contour
 fig, ax = plt.subplots(1, 1, figsize=(7.5, 6))
 
@@ -355,7 +379,7 @@ Z = loss_evals.reshape(theta_1s.shape)
 ## Replace all NaNs with 1e-6
 Z = jnp.nan_to_num(Z, nan=1e-6)
 
-pcm = ax.pcolormesh(theta_0s, theta_1s, Z, norm=mcolors.LogNorm(vmin=Z.min(), vmax=Z.max()))
+pcm = ax.pcolormesh(theta_0s, theta_1s, Z, norm=mcolors.LogNorm(vmin=Z.min(), vmax=Z.max()), cmap='nipy_spectral')
 fig.colorbar(pcm, ax=ax, extend='both', label='MSE (log scale)')
 
 # # Define logarithmic levels
@@ -367,10 +391,12 @@ fig.colorbar(pcm, ax=ax, extend='both', label='MSE (log scale)')
 ax.set_xlabel(f"Theta {theta_ids[0]}")
 ax.set_ylabel(f"Theta {theta_ids[1]}")
 
-
 ## Place thetas with crosses on the plot, every 10th
+thetas = np.array(thetas)
+thetas[:,0] = np.clip(thetas[:,0], t0_min, t0_max)
+thetas[:,1] = np.clip(thetas[:,1], t1_min, t1_max)
 skip_iter = 10
-ax.scatter(thetas[::skip_iter, 0], thetas[::skip_iter, 1], marker="x", color="green", label="SGD")
+ax.scatter(thetas[::skip_iter, 0], thetas[::skip_iter, 1], marker="x", color="white", label="SGD")
 ax.legend()
 
 
@@ -382,3 +408,31 @@ ax.legend()
 
 
 # %%
+
+## 2D imshow plot with the loss againts the epochs and time horizon T
+
+epochs = np.arange(nb_epochs+1)
+Ts = [T-10, T-5, T]
+print(Ts)
+# losses_imshow = np.tile(losses, (3,1))
+losses_imshow = jnp.stack([losses*10, losses*2, losses], axis=0)
+
+fig, ax = plt.subplots(1, 1, figsize=(7.5, 6))
+pcm = ax.imshow(losses_imshow, aspect='auto', cmap='coolwarm', interpolation='none', origin='lower', norm=mcolors.LogNorm(vmin=losses_imshow.min(), vmax=losses_imshow.max()))
+
+## Add colorbar
+cbar = fig.colorbar(pcm, ax=ax, extend='both', label='MSE')
+
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Time horizon T')
+ax.set_title('Loss Evolution With Time Horizon T')
+
+## Set x ticks and labels to the epochs
+ax.set_xticks(np.arange(0, nb_epochs+1, 500))
+ax.set_xticklabels(epochs[::500])
+
+## Set y ticks and labels to the time horizon
+ax.set_yticks(np.arange(3))
+ax.set_yticklabels(Ts)
+
+plt.savefig(f"data/mass/loss_imshow_{SEED:05d}.png", dpi=300, bbox_inches='tight')
