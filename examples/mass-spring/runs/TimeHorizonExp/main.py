@@ -119,7 +119,7 @@ def train_step(model, batch, opt_state):
     return model, opt_state, loss
 
 
-opt = optax.sgd(init_lr)
+opt = optax.adam(init_lr)
 opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
 
