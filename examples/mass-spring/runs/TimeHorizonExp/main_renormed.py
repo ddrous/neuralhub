@@ -231,7 +231,7 @@ for epoch in range(nb_epochs):
     T_hrz_list.append(T_hrz.T)
 
     if verbose and (epoch%print_every==0 or epoch==nb_epochs-1):
-        print(f"    Epoch: {epoch:-5d}      Loss: {loss:.8f}", flush=True)
+        print(f"    Epoch: {epoch:-5d}      Loss: {loss:.12f}", flush=True)
 
 losses = jnp.stack(losses)
 thetas = jnp.stack(theta_list)

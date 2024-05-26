@@ -11,7 +11,7 @@ import matplotlib.colors as mcolors
 ## Load the data (.npz files in the results folder)
 
 savefolder = "results_sgd_5/"
-nb_runs = 25
+nb_runs = 51
 
 Ts = []
 losses = []
@@ -39,7 +39,7 @@ Ts_list = np.stack(Ts_list)
 ## 2D imshow plot with the loss againts the epochs and time horizon T
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-losses_plot = losses[:,:501]
+losses_plot = losses[:,:1001]
 pcm = ax.imshow(losses_plot, aspect='auto', cmap='turbo', interpolation='none', origin='lower', norm=mcolors.LogNorm(vmin=losses_plot.min(), vmax=losses_plot.max()))
 
 ## Add colorbar
@@ -54,9 +54,9 @@ ax.set_title('Loss Evolution With Various Time Horizons')
 # ax.set_xticklabels(epochs[::500])
 
 ## Set y ticks and labels to the time horizon
-Ts_list = np.linspace(Ts.min(), Ts.max(), 5)
+Ts_ticks = np.linspace(Ts.min(), Ts.max(), 5)
 ax.set_yticks(np.arange(len(Ts))[::len(Ts)//4])
-ax.set_yticklabels(Ts_list)
+ax.set_yticklabels(Ts_ticks)
 
 plt.savefig(f"{savefolder}loss_imshow.png", dpi=300, bbox_inches='tight')
 # %%
@@ -96,7 +96,7 @@ plt.savefig(f"{savefolder}walltimes.png", dpi=300, bbox_inches='tight')
 ## 2D imshow plot with the loss gradient norm the epochs and time horizon T
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-grad_norm_plot = grad_norms[:,:501]
+grad_norm_plot = grad_norms[:,:1001]
 
 pcm = ax.imshow(grad_norm_plot, aspect='auto', cmap='nipy_spectral', interpolation='none', origin='lower', norm=mcolors.LogNorm(vmin=grad_norm_plot.min(), vmax=grad_norm_plot.max()))
 
@@ -108,9 +108,9 @@ ax.set_ylabel('Time horizon T')
 ax.set_title('Gradient Norm Evolution With Various Time Horizons')
 
 ## Set y ticks and labels to the time horizon
-Ts_list = np.linspace(Ts.min(), Ts.max(), 5)
+Ts_ticks = np.linspace(Ts.min(), Ts.max(), 5)
 ax.set_yticks(np.arange(len(Ts))[::len(Ts)//4])
-ax.set_yticklabels(Ts_list)
+ax.set_yticklabels(Ts_ticks)
 
 plt.savefig(f"{savefolder}loss_imshow_grads.png", dpi=300, bbox_inches='tight')
 
