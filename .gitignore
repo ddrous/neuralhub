@@ -11,9 +11,9 @@ pintode.egg-info/*
 *vtk
 quadqs_statistics.json
 
-graphpint.egg-info
-graphpint.egg-info/*
-graphpint/__pycache__/*
+neuralhub.egg-info
+neuralhub.egg-info/*
+neuralhub/__pycache__/*
 
 # For tensorboard logs
 *v2

@@ -27,8 +27,8 @@ import diffrax
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-from graphpint.utils import *
-from graphpint.integrators import *
+from neuralhub.utils import *
+from neuralhub.integrators import *
 
 import optax
 from functools import partial

@@ -47,8 +47,8 @@ import diffrax
 
 import matplotlib.pyplot as plt
 
-from graphpint.utils import *
-from graphpint.integrators import *
+from neuralhub.utils import *
+from neuralhub.integrators import *
 
 import optax
 from functools import partial

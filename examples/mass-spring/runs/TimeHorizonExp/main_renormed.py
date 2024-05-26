@@ -10,7 +10,7 @@ import optax
 import time
 import argparse
 
-from graphpint import params_norm
+from neuralhub import params_norm
 
 try:
     __IPYTHON__

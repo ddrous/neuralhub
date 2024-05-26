@@ -3,7 +3,7 @@
 #%%
 
 import numpy as np
-from graphpint.utils import *
+from neuralhub.utils import *
 import matplotlib.pyplot as plt
 
 

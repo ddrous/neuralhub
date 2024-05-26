@@ -2,7 +2,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
-from graphpint.utils import *
+from neuralhub.utils import *
 
 # Define the Dahlquist ODE
 def dahlquist(t, y):

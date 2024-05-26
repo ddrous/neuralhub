@@ -1,7 +1,7 @@
 [project]
-name = "graphpint"
-description = "Scaling differential equations via transferable dynamics"
-version = "0.0.1"
+name = "neuralhub"
+description = "A hub for learning differential equations"
+version = "0.0.2"
 authors = [
     { name = "Roussel Desmond Nzoyem", email = "desmond.ngueguin@gmail.com" }
 ]
@@ -22,4 +22,4 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["graphpint"]
+py-modules = ["neuralhub"]
