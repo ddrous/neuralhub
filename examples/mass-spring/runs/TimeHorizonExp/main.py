@@ -10,6 +10,8 @@ import optax
 import time
 import argparse
 
+from graphpint import params_norm
+
 try:
     __IPYTHON__
     _in_ipython_session = True
@@ -20,7 +22,7 @@ except NameError:
 #%%
 
 if _in_ipython_session:
-	args = argparse.Namespace(time_horizon='10.00', savepath="results/99999.npz", verbose=1)
+	args = argparse.Namespace(time_horizon='10.00', savepath="results_sgd_2/99999.npz", verbose=1)
 else:
 	parser = argparse.ArgumentParser(description='Description of your program')
 	parser.add_argument('--time_horizon', type=str, help='Time Horizon T', default='10.00', required=False)
@@ -38,8 +40,8 @@ if verbose:
     print("  - Savepath: ", savepath)
 
 ## Training hps
-print_every = 500
-nb_epochs = 2000
+print_every = 100
+nb_epochs = 500
 batch_size = 1
 init_lr = 1e-1
 
@@ -116,10 +118,12 @@ def train_step(model, batch, opt_state):
     updates, opt_state = opt.update(grads, opt_state)
     model = eqx.apply_updates(model, updates)
 
-    return model, opt_state, loss
+    grad_norm = params_norm(grads)
+
+    return model, opt_state, loss, grad_norm
 
 
-opt = optax.adam(init_lr)
+opt = optax.sgd(init_lr)
 opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
 
@@ -130,6 +134,7 @@ start_time = time.time()
 
 
 losses = []
+grad_norms = []
 theta_list = [model.vector_field.matrix]
 
 for epoch in range(nb_epochs):
@@ -139,7 +144,7 @@ for epoch in range(nb_epochs):
     for i in range(0, data.shape[1], batch_size):
         batch = (data[0,i:i+batch_size,...], t_eval)
     
-        model, opt_state, loss = train_step(model, batch, opt_state)
+        model, opt_state, loss, grad_norm = train_step(model, batch, opt_state)
 
         loss_sum += loss
         nb_batches += 1
@@ -147,12 +152,14 @@ for epoch in range(nb_epochs):
     loss_epoch = loss_sum/nb_batches
     losses.append(loss_epoch)
     theta_list.append(model.vector_field.matrix)
+    grad_norms.append(grad_norm)
 
     if verbose and (epoch%print_every==0 or epoch==nb_epochs-1):
         print(f"    Epoch: {epoch:-5d}      Loss: {loss_epoch:.8f}", flush=True)
 
 losses = jnp.stack(losses)
 thetas = jnp.stack(theta_list)
+grad_norms = jnp.stack(grad_norms)
 
 wall_time = time.time() - start_time
 
@@ -163,4 +170,11 @@ if verbose:
 # %%
 
 ## Save results: T, traj_length, losses, thetas, wall_time into a .npz file
-np.savez(savepath, time_horizon=T, traj_length=traj_length, losses=losses, thetas=thetas, wall_time=wall_time)
+np.savez(savepath, time_horizon=T, traj_length=traj_length, losses=losses, thetas=thetas, wall_time=wall_time, grad_norms=grad_norms)
+
+
+# %%
+
+# from graphpint import sbplot
+
+# sbplot(grad_norms, title="Gradient Norms", y_scale="log") 

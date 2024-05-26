@@ -15,19 +15,21 @@ nb_runs = 101
 Ts = []
 losses = []
 walltimes = []
+grad_norms = []
 
 for i in range(nb_runs):
-    data = np.load(f"results_adam/{i:05d}.npz")
+    data = np.load(f"results_sgd_2/{i:05d}.npz")
 
     Ts.append(data['time_horizon'])
     losses.append(data['losses'])
     walltimes.append(data['wall_time'])
+    grad_norms.append(data['grad_norms'])
 
 epochs = np.arange(losses[0].shape[0]+1)
 losses = jnp.stack(losses)
 Ts = np.array(Ts)
 walltimes = np.array(walltimes)
-
+grad_norms = np.stack(grad_norms)
 
 
 
@@ -80,3 +82,28 @@ ax.set_ylabel('Wall time (s)')
 ax.set_title('GD Training Time against Time Horizon')
 
 plt.savefig(f"results_adam/walltimes.png", dpi=300, bbox_inches='tight')
+
+
+
+
+
+#%%
+
+## 2D imshow plot with the loss gradient norm the epochs and time horizon T
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+pcm = ax.imshow(grad_norms[:,:501], aspect='auto', cmap='turbo', interpolation='none', origin='lower', norm=mcolors.LogNorm(vmin=losses.min(), vmax=losses.max()))
+
+## Add colorbar
+cbar = fig.colorbar(pcm, ax=ax, label='MSE')
+
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Time horizon T')
+ax.set_title('Gradient Norm Evolution With Various Time Horizons')
+
+## Set y ticks and labels to the time horizon
+Ts_list = np.linspace(Ts.min(), Ts.max(), 5)
+ax.set_yticks(np.arange(len(Ts))[::len(Ts)//4])
+ax.set_yticklabels(Ts_list)
+
+plt.savefig(f"results_sgd_2/loss_imshow.png", dpi=300, bbox_inches='tight')
