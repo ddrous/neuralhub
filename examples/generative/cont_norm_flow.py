@@ -438,7 +438,7 @@ while step < steps:
     end = time.time()
     values.append(value)
     if (step % print_every) == 0 or step == steps - 1:
-        print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
+        print(f"Step: {step}, Loss: {value}, Computation time: {end - start}", flush=True)
 
 values = jnp.stack(values)
 num_samples = 5000
@@ -482,7 +482,7 @@ for i, (ax, density) in enumerate(zip(axs, densities)):
     ax.set_xticks([])
     ax.set_yticks([])
 plt.savefig(out_path)
-plt.show()
+# plt.show()
 
 
 #%%
@@ -506,3 +506,4 @@ eqx.tree_serialise_leaves(f"{savefolder}cnf_model_T{T_hrz:0.2f}.eqx", model)
 ## Save the values in a npz
 jnp.savez(f"{savefolder}artefacts_T{T_hrz:0.2f}.npz", values=values, densities=jnp.stack(densities), time_horizon=jnp.array(T_hrz))
 
+print()

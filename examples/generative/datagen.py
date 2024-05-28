@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 ## Generate multiple time horizons Ts
-Ts = np.logspace(-2, 1, 15)
+Ts = np.logspace(-2, 2, 25)
 
 ## Run the main script to generate the data
 for T_id, T in enumerate(Ts):
@@ -15,4 +15,4 @@ for T_id, T in enumerate(Ts):
 
 # %%
 # import numpy as np
-# np.logspace(-2, 1, 15)
+# np.logspace(-2, 2, 25)
