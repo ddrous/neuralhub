@@ -10,7 +10,7 @@ import matplotlib.colors as mcolors
 #%%
 ## Load the data (.npz files in the results folder)
 
-savefolder = "results_sgd_2/"
+savefolder = "results_sgd_8/"
 nb_runs = 75
 
 Ts = []
@@ -21,18 +21,18 @@ Ts_list = []
 for i in range(nb_runs):
     data = np.load(f"{savefolder}{i:05d}.npz")
 
-    Ts.append(data['time_horizon'])
+    Ts.append(data['time_horizon_init'])
     losses.append(data['losses'])
     walltimes.append(data['wall_time'])
     grad_norms.append(data['grad_norms'])
-    # Ts_list.append(data['time_horizon_list'])
+    Ts_list.append(data['time_horizon_list'])
 
 epochs = np.arange(losses[0].shape[0]+1)
 losses = jnp.stack(losses)
 Ts = np.array(Ts)
 walltimes = np.array(walltimes)
 grad_norms = np.stack(grad_norms)
-# Ts_list = np.stack(Ts_list)
+Ts_list = np.stack(Ts_list)
 
 
 #%%
@@ -116,25 +116,25 @@ plt.savefig(f"{savefolder}loss_imshow_grads.png", dpi=300, bbox_inches='tight')
 
 
 
-# #%%
+#%%
 
-# ## Plot the final Ts against the init Ts
+## Plot the final Ts against the init Ts
 
-# fig, ax = plt.subplots(1, 1, figsize=(4.5, 4))
+fig, ax = plt.subplots(1, 1, figsize=(4.5, 4))
 
-# initTs = Ts
-# finalTs = Ts_list[:,-1]
+initTs = Ts
+finalTs = Ts_list[:,-1]
 
-# ax.plot(initTs, finalTs, 'o')
+ax.plot(initTs, finalTs, 'o')
 
-# ax.set_xlabel('Initial Time Horizon T')
-# ax.set_ylabel('Final Time Horizon T')
+ax.set_xlabel('Initial Time Horizon T')
+ax.set_ylabel('Final Time Horizon T')
 
-# ## Set the same lims on x and y axis
-# xlim = ax.get_xlim()
-# ax.set_ylim(xlim);
+## Set the same lims on x and y axis
+xlim = ax.get_xlim()
+ax.set_ylim(xlim);
 
-# plt.savefig(f"{savefolder}init_vs_final_Ts.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"{savefolder}init_vs_final_Ts.png", dpi=300, bbox_inches='tight')
 
 
 #%%

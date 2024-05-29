@@ -10,7 +10,7 @@ import optax
 import time
 import argparse
 
-from neuralhub import params_norm
+from neuralhub import params_norm, sbplot
 
 try:
     __IPYTHON__
@@ -22,7 +22,7 @@ except NameError:
 #%%
 
 if _in_ipython_session:
-	args = argparse.Namespace(time_horizon='10.00', savepath="results_sgd_6/99999.npz", verbose=1)
+	args = argparse.Namespace(time_horizon='5.00', savepath="results_sgd_8/99999.npz", verbose=1)
 else:
 	parser = argparse.ArgumentParser(description='Description of your program')
 	parser.add_argument('--time_horizon', type=str, help='Time Horizon T', default='10.00', required=False)
@@ -36,17 +36,20 @@ verbose = args.verbose
 
 if verbose:
     print("\n############# Lotka-Volterra with Neural ODE #############\n")
-    print("  - Time Horizon T: ", T)
+    print("  - Initial time Horizon T: ", T)
     print("  - Savepath: ", savepath)
 
 ## Training hps
-print_every = 100
-nb_epochs = 1000
+print_every = 300
+nb_epochs = 1200
 init_lr_mod = 1e-1
 init_lr_T = 10.
 
-traj_length = 11
+traj_length = 25
 skip_steps = 1
+
+T_full = 100        ### All trajectories are this long, just in case !
+
 
 #%%
 
@@ -55,11 +58,28 @@ def mass_spring_damper(t, state, k, mu, m):
     return E @ state
 
 p = {"k": 1, "mu": 0.25, "m": 1}
-t_eval = np.linspace(0, T, traj_length)[::skip_steps]
+t_eval_full = np.linspace(0, T_full, (traj_length-1)*100+1)[::skip_steps]  ## Biggest t we can find !
 initial_state = [1.0, 1.0]
 
-solution = solve_ivp(mass_spring_damper, (0,T), initial_state, args=p.values(), t_eval=t_eval)
+solution = solve_ivp(mass_spring_damper, (0,T_full), initial_state, args=p.values(), t_eval=t_eval_full)
 data = solution.y.T[None, None, ::, :]
+
+# ## Test 0: Plot the data
+# sbplot(t_eval_full, data[0, 0, :, 0], title="Mass-Spring-Damper: Position", x_label="Time", y_label="Position");
+
+# ## Test 1: Plot the interpolation as well
+# t_eval_small = np.linspace(0, T, traj_length)
+# sol_int = np.interp(t_eval_small, t_eval_full, data[0, 0, :, 0])
+# ax = sbplot(t_eval_small, sol_int, "-", title="Interpolation vs Renormalisation", x_label="Time", y_label="Position", label="Interpolated");
+
+# ## Test 2: Integrate a renomalized vector field
+# def mass_spring_damper_renormed(t, state, k, mu, m):
+#     E = np.array([[0, 1], [-k/m, -mu/m]])
+#     return T * (E @ state)
+# t_renormed = np.linspace(0, 1, traj_length)
+# sol_renormed = solve_ivp(mass_spring_damper_renormed, (0,1), initial_state, args=p.values(), t_eval=t_renormed)
+# ax = sbplot(t_eval_small, sol_renormed.y[0], "x", label="Renormalized", y_label="Position", ax=ax);
+
 
 # %%
 
@@ -105,37 +125,14 @@ class NeuralODE(eqx.Module):
         return trajs, jnp.sum(nb_fes)
 
 
-def model_real(x0s, T):
-    t_eval = jnp.linspace(0,1,traj_length)
+def model_real(X_full, t_full, T):
+    t_eval = jnp.linspace(0, T, traj_length)
 
-    # jax.debug.print("T: {}", T)
-    # print("T: ", T)
+    ## Interpolate X_full to t_eval
+    X1 = jnp.interp(t_eval, t_full, X_full[0, ...,0])
+    X2 = jnp.interp(t_eval, t_full, X_full[0, ...,1])
 
-    k, mu, m = p.values()
-
-    def integrate(y0):
-
-        def real_vf(t, x, args):
-            k, mu, m, T = args
-            return T * (jnp.array([[0, 1], [-k/m, -mu/m]]) @ x)
-
-        sol = diffrax.diffeqsolve(
-                diffrax.ODETerm(real_vf),
-                diffrax.Bosh3(),
-                args=(k, mu, m, T),
-                t0=t_eval[0],
-                t1=t_eval[-1],
-                dt0=t_eval[1]-t_eval[0],
-                y0=y0,
-                stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
-                saveat=diffrax.SaveAt(ts=t_eval),
-                adjoint=diffrax.BacksolveAdjoint(),
-                max_steps=4096
-            )
-        return sol.ys, sol.stats["num_steps"]
-
-    trajs, nb_fes = eqx.filter_vmap(integrate)(x0s)
-    return trajs, jnp.sum(nb_fes)
+    return jnp.concatenate([X1, X2], axis=-1)[None,...], t_eval
 
 
 
@@ -155,7 +152,7 @@ class THorizon(eqx.Module):
 
 model = NeuralODE(data_size=2)
 T_hrz = THorizon(T)
-
+mega_model = (model, T_hrz)
 
 # model_real(jnp.array([1., 1.])[None, ...], T)
 # print(data[0, :, 0].shape)
@@ -164,39 +161,33 @@ T_hrz = THorizon(T)
 
 # %%
 
-def loss_fn(model, T_hrz, batch):
-    # X, t = batch
-    X0s = batch
-    X, _ = model_real(X0s, T_hrz.T)
-    X_hat, _ = model(X0s, T_hrz.T)
+def loss_fn(mega_model, batch):
+    model, T_hrz = mega_model
+    X_full, t_full = batch
+    X, _ = model_real(X_full, t_full, T_hrz.T)
+    X_hat, _ = model(X_full[...,0,:], T_hrz.T)
     return jnp.mean((X - X_hat)**2)
 
-@eqx.filter_jit
-def train_step_min(model, T_hrz, batch, opt_state):
-    loss, grads = eqx.filter_value_and_grad(loss_fn)(model, T_hrz, batch)
 
-    updates, opt_state = opt_mod.update(grads, opt_state)
+@eqx.filter_jit
+def mega_train_step(mega_model, batch, mega_opt_state):
+    loss, mega_grads = eqx.filter_value_and_grad(loss_fn)(mega_model, batch)
+
+    model, T_hrz = mega_model
+    grads_mod, grads_T = mega_grads
+    opt_state_mod, opt_state_T = mega_opt_state
+
+    updates, opt_state_mod = opt_mod.update(grads_mod, opt_state_mod)
     model = eqx.apply_updates(model, updates)
 
-    grad_norm = params_norm(grads)
-
-    return model, opt_state, loss, grad_norm
-
-
-@eqx.filter_jit
-def train_step_max(model, T_hrz, batch, opt_state):
-
-    def new_loss_fn(T_hrz, model, batch):
-        return -loss_fn(model, T_hrz, batch)
-
-    loss, grads = eqx.filter_value_and_grad(new_loss_fn)(T_hrz, model, batch)
-
-    updates, opt_state = opt_T.update(grads, opt_state)
+    ## Replace grads_T with -grads_T to maximize
+    grads_T = jax.tree.map(lambda x: -x, grads_T)
+    updates, opt_state_T = opt_T.update(grads_T, opt_state_T)
     T_hrz = eqx.apply_updates(T_hrz, updates)
 
-    grad_norm = params_norm(grads)
+    grad_norm = params_norm(grads_mod)
 
-    return T_hrz, opt_state, loss, grad_norm
+    return (model, T_hrz), (opt_state_mod, opt_state_T), loss, grad_norm
 
 
 opt_mod = optax.sgd(init_lr_mod)
@@ -217,13 +208,14 @@ grad_norms = []
 theta_list = [model.vector_field.matrix]
 T_hrz_list = [T_hrz.T]
 
-batch = data[0, :, 0]
+batch = data[0, :, :, :], t_eval_full
 
 for epoch in range(nb_epochs):
 
-    model, opt_state_mod, loss, grad_norm = train_step_min(model, T_hrz, batch, opt_state_mod)
+    mega_model, opt_states, loss, grad_norm = mega_train_step((model, T_hrz), batch, (opt_state_mod, opt_state_T))
 
-    T_hrz, opt_state_T, loss_T, _ = train_step_max(model, T_hrz, batch, opt_state_T)
+    model, T_hrz = mega_model
+    opt_state_mod, opt_state_T = opt_states
 
     losses.append(loss)
     theta_list.append(model.vector_field.matrix)
@@ -253,6 +245,12 @@ np.savez(savepath, time_horizon_init=T, time_horizon_list=T_hrz_list, traj_lengt
 
 # %%
 
-# from graphpint import sbplot
+# ## Test 3: Plot to training predictions
+# X_full, t_full = batch
+# t_eval_small = np.linspace(0, T_hrz.T, traj_length)
 
-# sbplot(grad_norms, title="Gradient Norms", y_scale="log") 
+# X, _ = model_real(X_full, t_full, T_hrz.T)
+# X_hat, _ = model(X_full[...,0,:], T_hrz.T)
+
+# ax = sbplot(t_eval_small, X_hat[0, :, 0], "-", label="Predicted", title="Real vs Predicted", x_label="Time", y_label="Position")
+# ax = sbplot(t_eval_small, X[0, :, 0], "x", label="Real", ax=ax)
