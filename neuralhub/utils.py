@@ -186,3 +186,4 @@ def infinity_norm_estimation(model, xs, ctx):
 def l2_norm_traj(xs, xs_hat):
     total_loss = jnp.mean((xs - xs_hat)**2, axis=-1)   ## TODO mean or sum ? Norm of d-dimensional vectors
     return jnp.sum(total_loss) / (xs.shape[-2] * xs.shape[-3])
+

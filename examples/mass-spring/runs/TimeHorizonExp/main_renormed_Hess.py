@@ -10,7 +10,7 @@ import optax
 import time
 import argparse
 
-from neuralhub import params_norm, sbplot, params_norm_squared
+from neuralhub import params_norm, params_norm_squared, sbplot, RK4
 
 try:
     __IPYTHON__
@@ -22,8 +22,8 @@ except NameError:
 #%%
 
 if _in_ipython_session:
-	# args = argparse.Namespace(time_horizon='39.396473', savepath="results_sgd_8/99999.npz", verbose=1)
-	args = argparse.Namespace(time_horizon='15', savepath="results_sgd_8/99999.npz", verbose=1)
+	args = argparse.Namespace(time_horizon='39.396473', savepath="results_sgd_9/99999.npz", verbose=1)
+	# args = argparse.Namespace(time_horizon='15.0', savepath="results_sgd_9/99999.npz", verbose=1)
 else:
 	parser = argparse.ArgumentParser(description='Description of your program')
 	parser.add_argument('--time_horizon', type=str, help='Time Horizon T', default='10.00', required=False)
@@ -42,9 +42,9 @@ if verbose:
 
 ## Training hps
 print_every = 300
-nb_epochs = 2000
+nb_epochs = 3500
 init_lr_mod = 1e-1
-init_lr_T = 10.
+init_lr_T = 1e-1
 
 traj_length = 25
 skip_steps = 1
@@ -107,20 +107,29 @@ class NeuralODE(eqx.Module):
         t_eval = jnp.linspace(0,1,traj_length)
 
         def integrate(y0):
-            sol = diffrax.diffeqsolve(
-                    diffrax.ODETerm(self.vector_field),
-                    diffrax.Tsit5(),
-                    t0=t_eval[0],
-                    t1=t_eval[-1],
-                    args=(T,),
-                    dt0=1e-3,
-                    y0=y0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-                    saveat=diffrax.SaveAt(ts=t_eval),
-                    adjoint=diffrax.BacksolveAdjoint(),
-                    max_steps=4096
-                )
-            return sol.ys, sol.stats["num_steps"]
+            # sol = diffrax.diffeqsolve(
+            #         diffrax.ODETerm(self.vector_field),
+            #         diffrax.Tsit5(),
+            #         t0=t_eval[0],
+            #         t1=t_eval[-1],
+            #         args=(T,),
+            #         dt0=1e-3,
+            #         y0=y0,
+            #         stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+            #         saveat=diffrax.SaveAt(ts=t_eval),
+            #         # adjoint=diffrax.BacksolveAdjoint(),
+            #         adjoint=diffrax.RecursiveCheckpointAdjoint(),
+            #         max_steps=4096
+            #     )
+            # return sol.ys, sol.stats["num_steps"]
+
+            sol = RK4(fun=self.vector_field, 
+                      t_span=(t_eval[0], t_eval[-1]), 
+                      y0=y0,
+                      args=(T,T, T),
+                      t_eval=t_eval, 
+                      subdivisions=5)
+            return sol, t_eval.shape[0]*5
 
         trajs, nb_fes = eqx.filter_vmap(integrate)(x0s)
         return trajs, jnp.sum(nb_fes)
@@ -181,22 +190,63 @@ def mega_train_step(mega_model, batch, mega_opt_state):
     updates, opt_state_mod = opt_mod.update(grads_mod, opt_state_mod)
     model = eqx.apply_updates(model, updates)
 
-    # grad_norm = params_norm(grads_mod)
-    grad_norm = params_norm_squared(grads_mod)
+    grad_norm = params_norm(grads_mod)
+    # grad_norm = params_norm_squared(grads_mod)
 
-    ## Replace grads_T with -grads_T to maximize
-    # grads_T = jax.tree.map(lambda x: -x+(1-grad_norm), grads_T)
-    grads_T = jax.tree.map(lambda x: -x, grads_T)
+    ## Only update T if the gradient norm if we are at bad saddle point (hessian has small eigenvalues) ##
+    hessians = eqx.filter_hessian(loss_fn)(mega_model, batch)
+    # jax.debug.print("hessians {}", hessians)
+    hess_theta = hessians[0].vector_field.matrix[0].vector_field.matrix.reshape((4,4))
+    eigvals = jnp.linalg.eigh(hess_theta)[0]
+    # jax.debug.print("Eigenvalues: {}", eigvals)
+
+    grads_T = jax.lax.cond(jnp.any(jnp.abs(eigvals)<1e-1), 
+                            lambda y: jax.tree.map(lambda x: -x, y), 
+                            lambda y: jax.tree.map(lambda x: jnp.zeros_like(x), y),
+                            grads_T)
     updates, opt_state_T = opt_T.update(grads_T, opt_state_T)
     T_hrz = eqx.apply_updates(T_hrz, updates)
 
     return (model, T_hrz), (opt_state_mod, opt_state_T), loss, grad_norm
 
 
-opt_mod = optax.sgd(init_lr_mod)
+
+# @eqx.filter_jit
+# def mega_train_step_fine(mega_model, batch, mega_opt_state):
+#     loss, mega_grads = eqx.filter_value_and_grad(loss_fn)(mega_model, batch)
+
+#     model, T_hrz = mega_model
+#     grads_mod, grads_T = mega_grads
+#     opt_state_mod, opt_state_T = mega_opt_state
+
+#     updates, opt_state_mod = opt_mod.update(grads_mod, opt_state_mod)
+#     model = eqx.apply_updates(model, updates)
+
+#     grad_norm = params_norm(grads_mod)
+#     # grad_norm = params_norm_squared(grads_mod)
+
+#     ## Only update T if the gradient norm if we are at bad saddle point (hessian has small eigenvalues) ##
+#     hessians = eqx.filter_hessian(loss_fn)(mega_model, batch)
+#     # jax.debug.print("hessians {}", hessians)
+#     hess_theta = hessians[0].vector_field.matrix[0].vector_field.matrix.reshape((4,4))
+#     eigvals = jnp.linalg.eigh(hess_theta)[0]
+#     # jax.debug.print("Eigenvalues: {}", eigvals)
+
+#     grads_T = jax.lax.cond(jnp.any(jnp.abs(eigvals)<1e-1), 
+#                             lambda y: jax.tree.map(lambda x: x, y), 
+#                             lambda y: jax.tree.map(lambda x: jnp.zeros_like(x), y),
+#                             grads_T)
+#     updates, opt_state_T = opt_T.update(grads_T, opt_state_T)
+#     T_hrz = eqx.apply_updates(T_hrz, updates)
+
+#     return (model, T_hrz), (opt_state_mod, opt_state_T), loss, grad_norm
+
+
+
+opt_mod = optax.adam(init_lr_mod)
 opt_state_mod = opt_mod.init(eqx.filter(model, eqx.is_array))
 
-opt_T = optax.sgd(init_lr_T)
+opt_T = optax.adam(init_lr_T)
 opt_state_T = opt_T.init(T_hrz)
 
 
@@ -227,6 +277,19 @@ for epoch in range(nb_epochs):
 
     if verbose and (epoch%print_every==0 or epoch==nb_epochs-1):
         print(f"    Epoch: {epoch:-5d}      Loss: {loss:.12f}", flush=True)
+
+
+# for epoch_fine in range(nb_epochs):
+
+#     mega_model, opt_states, loss, grad_norm = mega_train_step_fine((model, T_hrz), batch, (opt_state_mod, opt_state_T))
+
+#     model, T_hrz = mega_model
+#     opt_state_mod, opt_state_T = opt_states
+
+#     if verbose and (epoch_fine%print_every==0 or epoch_fine==nb_epochs-1):
+#         print(f"    EpochFine: {epoch_fine:-5d}      Loss: {loss:.12f}", flush=True)
+
+
 
 losses = jnp.stack(losses)
 thetas = jnp.stack(theta_list)

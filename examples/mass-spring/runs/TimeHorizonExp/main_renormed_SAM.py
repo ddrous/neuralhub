@@ -10,7 +10,7 @@ import optax
 import time
 import argparse
 
-from neuralhub import params_norm, sbplot, params_norm_squared
+from neuralhub import params_norm, sbplot
 
 try:
     __IPYTHON__
@@ -22,8 +22,7 @@ except NameError:
 #%%
 
 if _in_ipython_session:
-	# args = argparse.Namespace(time_horizon='39.396473', savepath="results_sgd_8/99999.npz", verbose=1)
-	args = argparse.Namespace(time_horizon='15', savepath="results_sgd_8/99999.npz", verbose=1)
+	args = argparse.Namespace(time_horizon='39.396473', savepath="results_sgd_9/99999.npz", verbose=1)
 else:
 	parser = argparse.ArgumentParser(description='Description of your program')
 	parser.add_argument('--time_horizon', type=str, help='Time Horizon T', default='10.00', required=False)
@@ -42,15 +41,17 @@ if verbose:
 
 ## Training hps
 print_every = 300
-nb_epochs = 2000
+nb_epochs = 1500
 init_lr_mod = 1e-1
-init_lr_T = 10.
+init_lr_T = 1e+1
 
 traj_length = 25
 skip_steps = 1
 
 T_full = 100        ### All trajectories are this long, just in case !
 
+nb_inner_epochs = 10
+delta_T = 1e-1
 
 #%%
 
@@ -153,7 +154,7 @@ class THorizon(eqx.Module):
 
 model = NeuralODE(data_size=2)
 T_hrz = THorizon(T)
-mega_model = (model, T_hrz)
+
 
 # model_real(jnp.array([1., 1.])[None, ...], T)
 # print(data[0, :, 0].shape)
@@ -162,35 +163,41 @@ mega_model = (model, T_hrz)
 
 # %%
 
-def loss_fn(mega_model, batch):
-    model, T_hrz = mega_model
+def loss_fn(model, T_hrz, batch):
     X_full, t_full = batch
     X, _ = model_real(X_full, t_full, T_hrz.T)
     X_hat, _ = model(X_full[...,0,:], T_hrz.T)
     return jnp.mean((X - X_hat)**2)
 
-
 @eqx.filter_jit
-def mega_train_step(mega_model, batch, mega_opt_state):
-    loss, mega_grads = eqx.filter_value_and_grad(loss_fn)(mega_model, batch)
+def train_step_min(model, T_hrz, batch, opt_state):
+    loss, grads = eqx.filter_value_and_grad(loss_fn)(model, T_hrz, batch)
 
-    model, T_hrz = mega_model
-    grads_mod, grads_T = mega_grads
-    opt_state_mod, opt_state_T = mega_opt_state
-
-    updates, opt_state_mod = opt_mod.update(grads_mod, opt_state_mod)
+    updates, opt_state = opt_mod.update(grads, opt_state)
     model = eqx.apply_updates(model, updates)
 
-    # grad_norm = params_norm(grads_mod)
-    grad_norm = params_norm_squared(grads_mod)
+    grad_norm = params_norm(grads)
 
-    ## Replace grads_T with -grads_T to maximize
-    # grads_T = jax.tree.map(lambda x: -x+(1-grad_norm), grads_T)
-    grads_T = jax.tree.map(lambda x: -x, grads_T)
-    updates, opt_state_T = opt_T.update(grads_T, opt_state_T)
+    return model, opt_state, loss, grad_norm
+
+
+@eqx.filter_jit
+def train_step_max(model, T_hrz, T_old, batch, opt_state):
+
+    def new_loss_fn(T_hrz, model, batch):
+        return -loss_fn(model, T_hrz, batch)
+
+    loss, grads = eqx.filter_value_and_grad(new_loss_fn)(T_hrz, model, batch)
+
+    updates, opt_state = opt_T.update(grads, opt_state)
     T_hrz = eqx.apply_updates(T_hrz, updates)
 
-    return (model, T_hrz), (opt_state_mod, opt_state_T), loss, grad_norm
+    grad_norm = params_norm(grads)
+
+    ## Clip T_hrz
+    T_hrz = jax.tree.map(lambda x: jnp.clip(x, T_old-delta_T, T_old+delta_T), T_hrz)
+
+    return T_hrz, opt_state, loss, grad_norm
 
 
 opt_mod = optax.sgd(init_lr_mod)
@@ -215,10 +222,11 @@ batch = data[0, :, :, :], t_eval_full
 
 for epoch in range(nb_epochs):
 
-    mega_model, opt_states, loss, grad_norm = mega_train_step((model, T_hrz), batch, (opt_state_mod, opt_state_T))
+    model, opt_state_mod, loss, grad_norm = train_step_min(model, T_hrz, batch, opt_state_mod)
 
-    model, T_hrz = mega_model
-    opt_state_mod, opt_state_T = opt_states
+    T_old = T_hrz.T
+    for _ in range(nb_inner_epochs):
+        T_hrz, opt_state_T, loss_T, _ = train_step_max(model, T_hrz, T_old, batch, opt_state_T)
 
     losses.append(loss)
     theta_list.append(model.vector_field.matrix)
@@ -246,6 +254,8 @@ if verbose:
 np.savez(savepath, time_horizon_init=T, time_horizon_list=T_hrz_list, traj_length=traj_length, losses=losses, thetas=thetas, wall_time=wall_time, grad_norms=grad_norms)
 
 sbplot(losses, "-", label="Real", y_scale="log", title="Losses", x_label="Epochs", y_label="Loss");
+
+sbplot(T_hrz_list, "-", label="Real", y_scale="linear", title="Time Horizon", x_label="Epochs", y_label="T");
 
 # %%
 
