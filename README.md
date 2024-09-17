@@ -1,6 +1,6 @@
 # Neural Hub
 
-This is hub for __scaling__ deep learning models for science ! We try and implement ideas here before moving the their respective repos.
+This repository contains building blocks for __scaling__ deep learning models for science ! We prototype ideas here before moving the their respective repos.
 
 
 ## Getting started
