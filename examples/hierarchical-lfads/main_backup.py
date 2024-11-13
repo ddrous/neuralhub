@@ -43,11 +43,11 @@ mlp_hidden_size = 64
 mlp_depth = 3
 
 ## Optimiser hps
-init_lr = 1e-3
+init_lr = 1e-4
 
 ## Training hps
 print_every = 1000
-nb_epochs = 5000*2
+nb_epochs = 5000
 batch_size = 1
 
 ## Data generation hps
@@ -99,9 +99,9 @@ class NeuralODE(eqx.Module):
                                     use_bias=True, 
                                     activation=jax.nn.softplus,
                                     key=keys[0])
-        self.generator = eqx.nn.MLP(latent_size+data_size, 
+        self.generator = eqx.nn.MLP(latent_size, 
                                     latent_size, 
-                                    mlp_hidden_size*2, 
+                                    mlp_hidden_size*4, 
                                     mlp_depth*1, 
                                     use_bias=True, 
                                     activation=jax.nn.softplus,
@@ -115,40 +115,27 @@ class NeuralODE(eqx.Module):
                                             use_bias=True, 
                                             key=keys[2])
 
-    def __call__(self, xs, t_eval, key):
+    def __call__(self, x0s, t_eval, key):
         """ Forward call of the Neural ODE """
 
-        def integrate(y0_mu, y0_logvar, key, all_xs):
+        def integrate(y0_mu, y0_logvar, key):
             # eps = jax.random.normal(key, y0_mu.shape)
             # y0 = y0_mu + eps*jnp.exp(0.5*y0_logvar)
 
             y0 = y0_mu      ### TODO properly sample from the distribution (above)
 
-            @eqx.filter_vmap(in_axes=(None, 0))
-            def interp_signal(tau, xs_):
-                return jnp.interp(tau, t_eval, xs_, left="extrapolate", right="extrapolate").squeeze()
-
             def vector_field(t, x, args):
-                # # ## Interpolate the data at time t-dt
-                all_xs, = args
-                dt = t_eval[1]-t_eval[0]
-
-                x_prev = interp_signal(t-dt, all_xs.T).T
-                gen_in = jnp.concatenate([x, x_prev])
-
+                gen_in = x
+                # gen_in = jnp.concatenate([x, jnp.array([t])])
                 return self.generator(gen_in)
-
-                # gen_in = x
-                # # gen_in = jnp.concatenate([x, jnp.array([t])])
-                # return self.generator(gen_in)
 
             sol = diffrax.diffeqsolve(
                     diffrax.ODETerm(vector_field),
                     diffrax.Tsit5(),
-                    args=(all_xs,),
+                    # args=(),
                     t0=t_eval[0],
                     t1=t_eval[-1],
-                    dt0=t_eval[1]-t_eval[0],
+                    dt0=t_eval[-1]-t_eval[0],
                     y0=y0,
                     stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
                     saveat=diffrax.SaveAt(ts=t_eval),
@@ -158,12 +145,11 @@ class NeuralODE(eqx.Module):
 
             return sol.ys
 
-        x0s = xs[:, 0, ...]       ## Shape: (batch, data_size)
         z0s = eqx.filter_vmap(self.encoder)(x0s)        ## Shape: (batch, 2*latent_size)
         z0s_mu, z0s_logvar = jnp.split(z0s, 2, axis=-1)
 
         keys = jax.random.split(key, num=x0s.shape[0])
-        zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
+        zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys)        ## Shape: (batch, T, latent_size)
 
         x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
         x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
@@ -188,7 +174,7 @@ model = NeuralODE(data_size=32,
 
 def loss_fn(model, batch, key):
     X, t = batch
-    X_recons, X_factors, (latents_mu, latents_logvars) = model(X[:, :, :], t, key)
+    X_recons, X_factors, (latents_mu, latents_logvars) = model(X[:, 0, :], t, key)
 
     ## MSE loss
     rec_loss = jnp.mean((X-X_recons)**2, axis=(1,2))
@@ -221,7 +207,7 @@ def train_step(model, batch, opt_state, key):
     return model, opt_state, loss, aux_data
 
 
-def sample_batch_portion(outputs, t_evals, traj_prop_min=0.2):
+def sample_batch_portion(outputs, t_evals, traj_prop_min=0.9):
     outputs = outputs[0, ...]
     num_shots, _, data_size = outputs.shape
     traj_len = t_evals.shape[0]
@@ -241,8 +227,6 @@ def sample_batch_portion(outputs, t_evals, traj_prop_min=0.2):
             new_trajs[i, :, j] = np.interp(new_ts, ts, trajs[i, :, j])
 
     return new_trajs, new_ts
-
-    # return outputs, t_evals
 
 
 
@@ -348,7 +332,7 @@ X = test_data[0, :, :, :]
 # t = np.linspace(t_span[0], t_span[1], T_horizon)
 t = t_eval
 
-X_hat, X_factors, X_lats = test_model(model, (X[:, :,:], t))
+X_hat, X_factors, X_lats = test_model(model, (X[:, 0,:], t))
 
 print(f"Test MSE: {jnp.mean((X-X_hat)**2):.8f}")
 
@@ -357,7 +341,7 @@ fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w', 'orange', 'yellow', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 colors = colors*10
 
-for i in range(1):     ## Plot 10 trajectories
+for i in range(4):     ## Plot 10 trajectories
     if i==0:
         sbplot(t, X_hat[0, :,i], "+", x_label='time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
         sbplot(t, X[0, :,i], "-", lw=1, label=f'True', ax=ax, color=colors[i])

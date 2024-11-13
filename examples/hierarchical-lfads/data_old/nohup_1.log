@@ -1,0 +1,116 @@
+Available devices: [CudaDevice(id=0)]
+Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
+Data shape: (1, 18537, 21, 32)
+
+
+=== Beginning Training ... ===
+
+Compiling function "train_step" for Node ...
+
+
+Compiling function "train_step" for Node ...
+
+    Epoch:     0      LossNode: 115.01805878
+    Epoch:     1      LossNode: 114.30015564
+    Epoch:     2      LossNode: 114.25398254
+    Epoch:     3      LossNode: 114.20561218
+    Epoch:   100      LossNode: 112.47753143
+    Epoch:   200      LossNode: 109.90060425
+    Epoch:   300      LossNode: 108.64647675
+    Epoch:   400      LossNode: 106.19908905
+    Epoch:   500      LossNode: 105.02806091
+    Epoch:   600      LossNode: 104.29432678
+    Epoch:   700      LossNode: 103.91493225
+    Epoch:   800      LossNode: 103.52243042
+    Epoch:   900      LossNode: 103.05554199
+    Epoch:  1000      LossNode: 102.96813202
+    Epoch:  1100      LossNode: 102.85860443
+    Epoch:  1200      LossNode: 102.74784088
+    Epoch:  1300      LossNode: 102.72490692
+    Epoch:  1400      LossNode: 102.74039459
+    Epoch:  1500      LossNode: 102.72026825
+    Epoch:  1600      LossNode: 102.65477753
+    Epoch:  1700      LossNode: 102.68822479
+    Epoch:  1800      LossNode: 102.63172150
+    Epoch:  1900      LossNode: 102.68789673
+    Epoch:  2000      LossNode: 102.64869690
+    Epoch:  2100      LossNode: 102.62311554
+    Epoch:  2200      LossNode: 102.65302277
+    Epoch:  2300      LossNode: 102.70923615
+    Epoch:  2400      LossNode: 102.62963104
+    Epoch:  2500      LossNode: 102.61982727
+    Epoch:  2600      LossNode: 102.57942963
+    Epoch:  2700      LossNode: 102.59006500
+    Epoch:  2800      LossNode: 102.63632965
+    Epoch:  2900      LossNode: 102.68384552
+    Epoch:  3000      LossNode: 102.62077332
+    Epoch:  3100      LossNode: 102.57235718
+    Epoch:  3200      LossNode: 102.67713928
+    Epoch:  3300      LossNode: 102.67450714
+    Epoch:  3400      LossNode: 102.61856842
+    Epoch:  3500      LossNode: 102.67430878
+    Epoch:  3600      LossNode: 102.65417480
+    Epoch:  3700      LossNode: 102.64081573
+    Epoch:  3800      LossNode: 102.64752960
+    Epoch:  3900      LossNode: 102.64544678
+    Epoch:  4000      LossNode: 102.58575439
+    Epoch:  4100      LossNode: 102.60927582
+    Epoch:  4200      LossNode: 102.63588715
+    Epoch:  4300      LossNode: 102.59420013
+    Epoch:  4400      LossNode: 102.64559174
+    Epoch:  4500      LossNode: 102.62129974
+    Epoch:  4600      LossNode: 102.63117981
+    Epoch:  4700      LossNode: 102.61935425
+    Epoch:  4800      LossNode: 102.65687561
+    Epoch:  4900      LossNode: 102.65715790
+    Epoch:  5000      LossNode: 102.64095306
+    Epoch:  5100      LossNode: 102.55398560
+    Epoch:  5200      LossNode: 102.64195251
+    Epoch:  5300      LossNode: 102.55427551
+    Epoch:  5400      LossNode: 102.63542175
+    Epoch:  5500      LossNode: 102.60820007
+    Epoch:  5600      LossNode: 102.70777893
+    Epoch:  5700      LossNode: 102.65031433
+    Epoch:  5800      LossNode: 102.61923218
+    Epoch:  5900      LossNode: 102.66722870
+    Epoch:  6000      LossNode: 102.73949432
+    Epoch:  6100      LossNode: 102.61469269
+    Epoch:  6200      LossNode: 102.62742615
+    Epoch:  6300      LossNode: 102.61340332
+    Epoch:  6400      LossNode: 102.65209961
+    Epoch:  6500      LossNode: 102.65863800
+    Epoch:  6600      LossNode: 102.58708954
+    Epoch:  6700      LossNode: 102.61882782
+    Epoch:  6800      LossNode: 102.60761261
+    Epoch:  6900      LossNode: 102.65206909
+    Epoch:  7000      LossNode: 102.63503265
+    Epoch:  7100      LossNode: 102.62294006
+    Epoch:  7200      LossNode: 102.66835022
+    Epoch:  7300      LossNode: 102.64173889
+    Epoch:  7400      LossNode: 102.68550873
+    Epoch:  7500      LossNode: 102.64644623
+    Epoch:  7600      LossNode: 102.65541077
+    Epoch:  7700      LossNode: 102.63422394
+    Epoch:  7800      LossNode: 102.64476013
+    Epoch:  7900      LossNode: 102.66036224
+    Epoch:  8000      LossNode: 102.64408112
+    Epoch:  8100      LossNode: 102.63262177
+    Epoch:  8200      LossNode: 102.59471893
+    Epoch:  8300      LossNode: 102.60150146
+    Epoch:  8400      LossNode: 102.63878632
+    Epoch:  8500      LossNode: 102.66151428
+    Epoch:  8600      LossNode: 102.68825531
+    Epoch:  8700      LossNode: 102.64318848
+    Epoch:  8800      LossNode: 102.66575623
+    Epoch:  8900      LossNode: 102.65270233
+    Epoch:  9000      LossNode: 102.58914185
+    Epoch:  9100      LossNode: 102.60871887
+    Epoch:  9200      LossNode: 102.65219879
+    Epoch:  9300      LossNode: 102.61806488
+    Epoch:  9400      LossNode: 102.68588257
+    Epoch:  9500      LossNode: 102.61563110
+    Epoch:  9600      LossNode: 102.62660980
+    Epoch:  9700      LossNode: 102.61655426
+    Epoch:  9800      LossNode: 102.58242798
+    Epoch:  9900      LossNode: 102.65425110
+    Epoch:  9999      LossNode: 102.61817932
