@@ -47,8 +47,8 @@ init_lr = 1e-3
 
 ## Training hps
 print_every = 1000
-nb_epochs = 5000*2
-batch_size = 1
+nb_epochs = 1000
+batch_size = 1800
 
 ## Data generation hps
 skip = 1
@@ -60,7 +60,7 @@ with h5py.File('./data/dataset.h5', "r") as f:
     test_data = np.array(f['valid_encod_data'])
     # print(train_data.shape)
 
-data = train_data[None, :1, ::skip, :]
+data = train_data[None, :, ::skip, :]
 T_horizon = 1.
 ## Create 
 t_eval = np.linspace(0, T_horizon, data.shape[2])
@@ -73,7 +73,6 @@ test_data = data
 
 
 # %%
-
 
 
 class NeuralODE(eqx.Module):
@@ -133,7 +132,7 @@ class NeuralODE(eqx.Module):
                 all_xs, = args
                 dt = t_eval[1]-t_eval[0]
 
-                x_prev = interp_signal(t-dt, all_xs.T).T
+                x_prev = interp_signal(t, all_xs.T).T   ## TODO t-dt instead of t
                 gen_in = jnp.concatenate([x, x_prev])
 
                 return self.generator(gen_in)
@@ -144,13 +143,13 @@ class NeuralODE(eqx.Module):
 
             sol = diffrax.diffeqsolve(
                     diffrax.ODETerm(vector_field),
-                    diffrax.Tsit5(),
+                    diffrax.Euler(),
                     args=(all_xs,),
                     t0=t_eval[0],
                     t1=t_eval[-1],
                     dt0=t_eval[1]-t_eval[0],
                     y0=y0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
+                    # stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     # adjoint=diffrax.RecursiveCheckpointAdjoint(),
                     max_steps=4096
@@ -199,13 +198,13 @@ def loss_fn(model, batch, key):
     # KL_loss = -0.5 * jnp.sum(1 + latents_logvars - latents_mu**2 - jnp.exp(latents_logvars), axis=1)
 
     mu, var = latents_mu, jnp.exp(latents_logvars)
-    target_mu, target_var = 0., 0.1
-    # target_mu, target_var = mu, 0.1
+    # target_mu, target_var = 0., 0.1
+    target_mu, target_var = mu, 0.1
     ## KL divergence between two gaussians
     KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)
 
-    # return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
-    return jnp.mean(rec_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
+    return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
+    # return jnp.mean(rec_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
 
 
 
@@ -222,7 +221,7 @@ def train_step(model, batch, opt_state, key):
 
 
 def sample_batch_portion(outputs, t_evals, traj_prop_min=0.2):
-    outputs = outputs[0, ...]
+    # outputs = outputs[0, ...]
     num_shots, _, data_size = outputs.shape
     traj_len = t_evals.shape[0]
 
@@ -281,7 +280,7 @@ for epoch in range(nb_epochs):
 
     for i in range(0, nb_data_points, batch_size):
         # batch = (data[0,i:i+batch_size, ...], t_eval)
-        batch = sample_batch_portion(*(data[i:i+batch_size, ...], t_eval))
+        batch = sample_batch_portion(*(data[0, i:i+batch_size, ...], t_eval))
 
         train_key, _ = jax.random.split(train_key)
         model, opt_state_node, loss, (rec_loss, kl_loss) = train_step(model, batch, opt_state_node, train_key)
@@ -359,10 +358,10 @@ colors = colors*10
 
 for i in range(1):     ## Plot 10 trajectories
     if i==0:
-        sbplot(t, X_hat[0, :,i], "+", x_label='time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X_hat[0, :,i], "+", x_label='Time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
         sbplot(t, X[0, :,i], "-", lw=1, label=f'True', ax=ax, color=colors[i])
     else:
-        sbplot(t, X_hat[0, :,i], "+", x_label='time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X_hat[0, :,i], "+", x_label='Time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
         sbplot(t, X[0, :,i], "-", lw=1, ax=ax, color=colors[i])
 
 ## Limit ax x and y axis to (-5,5)
