@@ -53,10 +53,10 @@ batch_size = 1800
 ## Data generation hps
 skip = 1
 
-run_folder = None
+run_folder = "./"
 
 #%%
-with h5py.File('./data/dataset.h5', "r") as f:
+with h5py.File('../../data/dataset.h5', "r") as f:
     print("Keys: %s" % f.keys())
     train_data = np.array(f['train_encod_data'])
     test_data = np.array(f['valid_encod_data'])
@@ -68,8 +68,8 @@ T_horizon = 1.
 t_eval = np.linspace(0, T_horizon, data.shape[2])
 print("Data shape:", data.shape)
 
-test_data = test_data[None, :, ::skip, :]
-# test_data = data
+# test_data = test_data[None, :, ::skip, :]
+test_data = data
 
 #%%
 if run_folder==None:
@@ -269,41 +269,41 @@ train_key, _ = jax.random.split(main_key)
 
 losses_node = []
 
-for epoch in range(nb_epochs):
+# for epoch in range(nb_epochs):
 
-    nb_batches = 0
-    loss_sum_node = 0.
+#     nb_batches = 0
+#     loss_sum_node = 0.
 
-    for i in range(0, nb_data_points, batch_size):
-        # batch = (data[0,i:i+batch_size, ...], t_eval)
-        batch = sample_batch_portion(*(data[0, i:i+batch_size, ...], t_eval))
+#     for i in range(0, nb_data_points, batch_size):
+#         # batch = (data[0,i:i+batch_size, ...], t_eval)
+#         batch = sample_batch_portion(*(data[0, i:i+batch_size, ...], t_eval))
 
-        train_key, _ = jax.random.split(train_key)
-        model, opt_state_node, loss, (rec_loss, kl_loss) = train_step(model, batch, opt_state_node, train_key)
+#         train_key, _ = jax.random.split(train_key)
+#         model, opt_state_node, loss, (rec_loss, kl_loss) = train_step(model, batch, opt_state_node, train_key)
 
-        loss_sum_node += loss
+#         loss_sum_node += loss
 
-        nb_batches += 1
+#         nb_batches += 1
 
-    loss_epoch_node = loss_sum_node/nb_batches
-    losses_node.append(loss_epoch_node)
+#     loss_epoch_node = loss_sum_node/nb_batches
+#     losses_node.append(loss_epoch_node)
 
-    if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-        print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      Rec_Loss: {rec_loss:.8f}      KL_Loss: {kl_loss:.8f}", flush=True)
+#     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
+#         print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      Rec_Loss: {rec_loss:.8f}      KL_Loss: {kl_loss:.8f}", flush=True)
 
-        eqx.tree_serialise_leaves("data/best_model.eqx", model) ## just for backup elsewhere
+#         eqx.tree_serialise_leaves("data/best_model.eqx", model) ## just for backup elsewhere
 
-wall_time = time.time() - start_time
-time_in_hmsecs = seconds_to_hours(wall_time)
-print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
+# wall_time = time.time() - start_time
+# time_in_hmsecs = seconds_to_hours(wall_time)
+# print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
 
 #%% 
 
-eqx.tree_serialise_leaves(run_folder+"model_lfads.eqx", model)
+# eqx.tree_serialise_leaves(run_folder+"model_lfads.eqx", model)
 
 # %%
-# model = eqx.tree_deserialise_leaves(run_folder+"best_model.eqx", model)
+model = eqx.tree_deserialise_leaves(run_folder+"model_lfads.eqx", model)
 
 # %%
 
@@ -329,12 +329,12 @@ plt.legend()
 
 plt.draw();
 
-plt.savefig(run_folder+"loss_lfads.png", dpi=300, bbox_inches='tight')
+# plt.savefig(run_folder+"loss_lfads.png", dpi=300, bbox_inches='tight')
 
 ## Save the losses to a file
-np.save(run_folder+"losses_lfads.npy", np.array(losses_node))
+# np.save(run_folder+"losses_lfads.npy", np.array(losses_node))
 
-
+# %%
 
 ## Test the model
 def test_model(model, batch):
@@ -342,13 +342,12 @@ def test_model(model, batch):
     X_hat = model(X, t, main_key)
     return X_hat
 
-
 # X = test_data[0, :, :, :]
 # # t = np.linspace(t_span[0], t_span[1], T_horizon)
 # t = t_eval
 
 # batch = (test_data[0, 0:0+batch_size, ...], t_eval)
-X, t = sample_batch_portion(*(test_data[0, 4:5, ...], t_eval), traj_prop_min=0.2)
+X, t = sample_batch_portion(*(test_data[0, :15, ...], t_eval), traj_prop_min=1.0)
 # print("t", X.shape, t)
 X_hat, X_factors, X_lats = test_model(model, (X, t))
 
@@ -359,13 +358,14 @@ fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w', 'orange', 'yellow', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 colors = colors*10
 
+train_id = np.random.randint(0, X.shape[0])
 for i in range(3,4):     ## Plot 10 trajectories
     if i==0:
-        sbplot(t, X_hat[0, :,i], "+", x_label='Time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
-        sbplot(t, X[0, :,i], "-", lw=1, label=f'True', ax=ax, color=colors[i])
+        sbplot(t, X_hat[train_id, :,i], "+", x_label='Time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X[train_id, :,i], "-", lw=1, label=f'True', ax=ax, color=colors[i])
     else:
-        sbplot(t, X_hat[0, :,i], ".", x_label='Time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
-        sbplot(t, X[0, :,i], "-", lw=1, ax=ax, color=colors[i])
+        sbplot(t, X_hat[train_id, :,i], ".", x_label='Time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X[train_id, :,i], "-", lw=1, ax=ax, color=colors[i])
 
 ## Limit ax x and y axis to (-5,5)
 plt.draw();

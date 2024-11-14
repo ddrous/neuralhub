@@ -203,7 +203,7 @@ def loss_fn(model, batch, key):
     # KL_loss = -0.5 * jnp.sum(1 + latents_logvars - latents_mu**2 - jnp.exp(latents_logvars), axis=1)
 
     mu, var = latents_mu, jnp.exp(latents_logvars)
-    target_mu, target_var = 0., 10.0**2
+    target_mu, target_var = 0., 10.0
     # target_mu, target_var = mu, 0.1
     ## KL divergence between two gaussians
     KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)

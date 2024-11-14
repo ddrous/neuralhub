@@ -1,69 +1,29 @@
 Available devices: [CudaDevice(id=0)]
 Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
 Data shape: (1, 18537, 201, 32)
+Created a new run folder at: ./runs/241114-125433/
+Completed copied scripts 
 
 
 === Beginning Training ... ===
 
-Compiling function "train_step" for Node ...
+Compiling function "train_step" ...
 
+Compiling function "train_step" ...
+    Epoch:     0      LossNode: 2933.80932617      Rec_Loss: 73.62351990      KL_Loss: 2014.68249512
+    Epoch:     1      LossNode: 1467.32470703      Rec_Loss: 111.55436707      KL_Loss: 865.16723633
+    Epoch:     2      LossNode: 1894.49279785      Rec_Loss: 136.78413391      KL_Loss: 531.44781494
+    Epoch:     3      LossNode: 600.01525879      Rec_Loss: 85.13605499      KL_Loss: 443.41433716
+    Epoch:   100      LossNode: 75.87120056      Rec_Loss: 59.22510147      KL_Loss: 11.99499702
+    Epoch:   200      LossNode: 106.24217987      Rec_Loss: 81.59996033      KL_Loss: 17.10463333
+    Epoch:   300      LossNode: 58.21086121      Rec_Loss: 46.07187653      KL_Loss: 3.30783653
+    Epoch:   400      LossNode: 56.94805145      Rec_Loss: 44.06615829      KL_Loss: 2.41705680
+    Epoch:   500      LossNode: 53.23116302      Rec_Loss: 50.19910431      KL_Loss: 3.22392797
+    Epoch:   600      LossNode: 60.21936798      Rec_Loss: 43.19996643      KL_Loss: 1.11672997
+    Epoch:   700      LossNode: 53.05686951      Rec_Loss: 51.41782379      KL_Loss: 2.69375038
+    Epoch:   800      LossNode: 54.29114914      Rec_Loss: 45.24431229      KL_Loss: 2.18053341
+    Epoch:   900      LossNode: 50.32286072      Rec_Loss: 44.80141449      KL_Loss: 2.18912911
+    Epoch:   999      LossNode: 54.02921677      Rec_Loss: 53.74685669      KL_Loss: 2.71439314
 
-Compiling function "train_step" for Node ...
-
-    Epoch:     0      LossNode: 176.31004333      Rec_Loss: 96.40608215      KL_Loss: 37.07400894
-    Epoch:     1      LossNode: 149.44506836      Rec_Loss: 92.59738922      KL_Loss: 26.18681526
-    Epoch:     2      LossNode: 121.74508667      Rec_Loss: 93.97827911      KL_Loss: 16.00342560
-    Epoch:     3      LossNode: 105.82516479      Rec_Loss: 94.75487518      KL_Loss: 9.53086281
-    Epoch:   100      LossNode: 10.64127636      Rec_Loss: 11.41871071      KL_Loss: 0.05430748
-    Epoch:   200      LossNode: 7.82049465      Rec_Loss: 7.87787151      KL_Loss: 0.01766723
-    Epoch:   300      LossNode: 7.13851404      Rec_Loss: 4.72515488      KL_Loss: 0.00665300
-    Epoch:   400      LossNode: 6.25787020      Rec_Loss: 5.99998093      KL_Loss: 0.00661664
-    Epoch:   500      LossNode: 7.04594946      Rec_Loss: 8.22603989      KL_Loss: 0.00863709
-    Epoch:   600      LossNode: 6.49837875      Rec_Loss: 6.11048174      KL_Loss: 0.00482929
-    Epoch:   700      LossNode: 6.19154644      Rec_Loss: 5.52487040      KL_Loss: 0.00365573
-    Epoch:   800      LossNode: 6.47644615      Rec_Loss: 6.07932281      KL_Loss: 0.00404871
-    Epoch:   900      LossNode: 6.41270304      Rec_Loss: 7.31056595      KL_Loss: 0.00428533
-    Epoch:  1000      LossNode: 6.18129110      Rec_Loss: 7.21898127      KL_Loss: 0.00369921
-    Epoch:  1100      LossNode: 5.93802309      Rec_Loss: 5.31763601      KL_Loss: 0.00226054
-    Epoch:  1200      LossNode: 7.06886578      Rec_Loss: 6.15364981      KL_Loss: 0.00233879
-    Epoch:  1300      LossNode: 6.85387087      Rec_Loss: 7.81474400      KL_Loss: 0.00350781
-    Epoch:  1400      LossNode: 6.46267223      Rec_Loss: 7.65561724      KL_Loss: 0.00393050
-    Epoch:  1500      LossNode: 5.85947275      Rec_Loss: 6.64402962      KL_Loss: 0.00294725
-    Epoch:  1600      LossNode: 6.29862309      Rec_Loss: 5.73748875      KL_Loss: 0.00202885
-    Epoch:  1700      LossNode: 5.75525570      Rec_Loss: 3.91251683      KL_Loss: 0.00157556
-    Epoch:  1800      LossNode: 5.54370642      Rec_Loss: 6.79632807      KL_Loss: 0.00236244
-    Epoch:  1900      LossNode: 5.68618536      Rec_Loss: 6.64856863      KL_Loss: 0.00263205
-    Epoch:  2000      LossNode: 6.03125906      Rec_Loss: 5.06978798      KL_Loss: 0.00167034
-    Epoch:  2100      LossNode: 5.21319103      Rec_Loss: 5.14933586      KL_Loss: 0.00185826
-    Epoch:  2200      LossNode: 5.96672010      Rec_Loss: 6.53977346      KL_Loss: 0.00200078
-    Epoch:  2300      LossNode: 6.21036196      Rec_Loss: 5.88506413      KL_Loss: 0.00211126
-    Epoch:  2400      LossNode: 6.40936565      Rec_Loss: 6.69758654      KL_Loss: 0.00216811
-    Epoch:  2500      LossNode: 6.17507029      Rec_Loss: 8.01436901      KL_Loss: 0.00355682
-    Epoch:  2600      LossNode: 5.88819361      Rec_Loss: 7.42941046      KL_Loss: 0.00286781
-    Epoch:  2700      LossNode: 6.15497255      Rec_Loss: 5.72689104      KL_Loss: 0.00194836
-    Epoch:  2800      LossNode: 5.63685369      Rec_Loss: 4.01801634      KL_Loss: 0.00150361
-    Epoch:  2900      LossNode: 5.75734186      Rec_Loss: 5.73658609      KL_Loss: 0.00196248
-    Epoch:  3000      LossNode: 6.16536808      Rec_Loss: 5.64121246      KL_Loss: 0.00167974
-    Epoch:  3100      LossNode: 6.20731449      Rec_Loss: 7.22386456      KL_Loss: 0.00272811
-    Epoch:  3200      LossNode: 6.18212080      Rec_Loss: 6.45040560      KL_Loss: 0.00190250
-    Epoch:  3300      LossNode: 6.31691980      Rec_Loss: 7.90817881      KL_Loss: 0.00306180
-    Epoch:  3400      LossNode: 6.05551577      Rec_Loss: 4.81549788      KL_Loss: 0.00178792
-    Epoch:  3500      LossNode: 6.43381882      Rec_Loss: 5.14932060      KL_Loss: 0.00185577
-    Epoch:  3600      LossNode: 6.41496706      Rec_Loss: 7.01055765      KL_Loss: 0.00224452
-    Epoch:  3700      LossNode: 6.59669113      Rec_Loss: 5.62473345      KL_Loss: 0.00174730
-    Epoch:  3800      LossNode: 6.23724365      Rec_Loss: 4.01805210      KL_Loss: 0.00150360
-    Epoch:  3900      LossNode: 6.05121851      Rec_Loss: 4.09584427      KL_Loss: 0.00140777
-    Epoch:  4000      LossNode: 6.07985067      Rec_Loss: 7.04290390      KL_Loss: 0.00229590
-    Epoch:  4100      LossNode: 6.04673100      Rec_Loss: 7.68786764      KL_Loss: 0.00351473
-    Epoch:  4200      LossNode: 6.14025974      Rec_Loss: 6.16469717      KL_Loss: 0.00183252
-    Epoch:  4300      LossNode: 6.41609478      Rec_Loss: 6.03231859      KL_Loss: 0.00205397
-    Epoch:  4400      LossNode: 5.89527512      Rec_Loss: 6.08071184      KL_Loss: 0.00210893
-    Epoch:  4500      LossNode: 5.52124596      Rec_Loss: 6.40368414      KL_Loss: 0.00199803
-    Epoch:  4600      LossNode: 5.91856527      Rec_Loss: 4.09584427      KL_Loss: 0.00140777
-    Epoch:  4700      LossNode: 5.35975409      Rec_Loss: 4.81549788      KL_Loss: 0.00178792
-    Epoch:  4800      LossNode: 5.83099985      Rec_Loss: 6.61258936      KL_Loss: 0.00241594
-    Epoch:  4900      LossNode: 5.96611738      Rec_Loss: 7.92968035      KL_Loss: 0.00307910
-    Epoch:  4999      LossNode: 6.25783682      Rec_Loss: 5.26525927      KL_Loss: 0.00170210
-
-Total GD training time: 7 hours 0 mins 26 secs
-Test MSE: nan
+Total GD training time: 0 hours 58 mins 55 secs
+Test MSE: 36.17853165
