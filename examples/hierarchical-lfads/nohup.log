@@ -1,40 +1,21 @@
 Available devices: [CudaDevice(id=0)]
 Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
 Data shape: (1, 18537, 201, 32)
-Created a new run folder at: ./runs/241114-153726/
+Created a new run folder at: ./runs/241114-190026/
 Completed copied scripts 
 
 
 === Beginning Training ... ===
 
 Compiling function "train_step" ...
-Traceback (most recent call last):
-  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 279, in <module>
-    model, opt_state_node, loss, (rec_loss, kl_loss) = train_step(model, batch, opt_state_node, train_key)
-                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_jit.py", line 275, in __call__
-    return self._call(False, args, kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_module.py", line 1096, in __call__
-    return self.__func__(self.__self__, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_jit.py", line 244, in _call
-    marker, _, _ = out = self._cached(
-                         ^^^^^^^^^^^^^
-  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 215, in train_step
-    (loss, aux_data), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, batch, key)
-                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 190, in loss_fn
-    X_recons, X_factors, (latents_mu, latents_logvars) = model(X, t, key)
-                                                         ^^^^^^^^^^^^^^^^
-  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 165, in __call__
-    zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 138, in integrate
-    control = diffrax.CubicInterpolation(t_eval, all_xs)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/diffrax/_global_interpolation.py", line 216, in __check_init__
-    jtu.tree_map(_check, *self.coeffs)
-TypeError: CubicInterpolation.__check_init__.<locals>._check() takes 4 positional arguments but 201 were given
---------------------
-For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+Compiling function "train_step" ...
+    Epoch:     0      LossNode: 4616.01757812      Rec_Loss: 510.66809082      KL_Loss: 3161.14770508
+    Epoch:     1      LossNode: 3048.42944336      Rec_Loss: 138.57273865      KL_Loss: 2623.61938477
+    Epoch:     2      LossNode: 2458.70410156      Rec_Loss: 76.75982666      KL_Loss: 2196.13037109
+    Epoch:     3      LossNode: 2046.64599609      Rec_Loss: 57.71861649      KL_Loss: 1813.33020020
+    Epoch:    49      LossNode: 181.31163025      Rec_Loss: 69.02549744      KL_Loss: 108.82218933
+
+Total GD training time: 1 hours 34 mins 47 secs
+trajs.shape (80,)
+Test MSE: 51.11870956

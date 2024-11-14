@@ -48,7 +48,7 @@ init_lr = 1e-3
 
 ## Training hps
 print_every = 100
-nb_epochs = 5
+nb_epochs = 1
 batch_size = 180
 
 ## Data generation hps
