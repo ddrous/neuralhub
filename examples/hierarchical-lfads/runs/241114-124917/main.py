@@ -215,7 +215,7 @@ def loss_fn(model, batch, key):
 
 @eqx.filter_jit
 def train_step(model, batch, opt_state, key):
-    print('\nCompiling function "train_step" ...')
+    print('\nCompiling function "train_step" for Node ...\n')
 
     (loss, aux_data), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, batch, key)
 
@@ -291,19 +291,20 @@ for epoch in range(nb_epochs):
     if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
         print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      Rec_Loss: {rec_loss:.8f}      KL_Loss: {kl_loss:.8f}", flush=True)
 
-        eqx.tree_serialise_leaves("data/best_model.eqx", model) ## just for backup elsewhere
+        eqx.tree_serialise_leaves(run_folder+"best_model.eqx", model)
 
 wall_time = time.time() - start_time
 time_in_hmsecs = seconds_to_hours(wall_time)
 print("\nTotal GD training time: %d hours %d mins %d secs" %time_in_hmsecs)
 
 
-#%% 
+# test_data = batch[0][None, ...]
 
-eqx.tree_serialise_leaves(run_folder+"model_lfads.eqx", model)
 
-# %%
-# model = eqx.tree_deserialise_leaves(run_folder+"best_model.eqx", model)
+
+
+
+
 
 # %%
 
@@ -335,6 +336,15 @@ plt.savefig(run_folder+"loss_lfads.png", dpi=300, bbox_inches='tight')
 np.save(run_folder+"losses_lfads.npy", np.array(losses_node))
 
 
+
+#%% 
+
+eqx.tree_serialise_leaves("data/model_lfads.eqx", model)
+
+# %%
+# model = eqx.tree_deserialise_leaves("data/best_model.eqx", model)
+
+## %%
 
 ## Test the model
 def test_model(model, batch):

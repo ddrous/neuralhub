@@ -231,4 +231,4 @@ def setup_run_folder(folder_path, script_name):
     os.system(f"cp -r {module_folder} {folder_path}")
     print("Completed copied scripts ")
 
-    return None
+    return adapt_folder
