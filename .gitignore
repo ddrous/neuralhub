@@ -48,3 +48,7 @@ examples/pendulums/data/*
 examples/dahlquist/data/*
 examples/lotka-voltera/data/*
 examples/lotka-voltera/lightning_logs/*
+
+
+
+examples/herarchical_lfads/runs/*

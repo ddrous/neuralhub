@@ -1,29 +1,40 @@
 Available devices: [CudaDevice(id=0)]
 Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
 Data shape: (1, 18537, 201, 32)
-Created a new run folder at: ./runs/241114-125433/
+Created a new run folder at: ./runs/241114-153726/
 Completed copied scripts 
 
 
 === Beginning Training ... ===
 
 Compiling function "train_step" ...
-
-Compiling function "train_step" ...
-    Epoch:     0      LossNode: 2933.80932617      Rec_Loss: 73.62351990      KL_Loss: 2014.68249512
-    Epoch:     1      LossNode: 1467.32470703      Rec_Loss: 111.55436707      KL_Loss: 865.16723633
-    Epoch:     2      LossNode: 1894.49279785      Rec_Loss: 136.78413391      KL_Loss: 531.44781494
-    Epoch:     3      LossNode: 600.01525879      Rec_Loss: 85.13605499      KL_Loss: 443.41433716
-    Epoch:   100      LossNode: 75.87120056      Rec_Loss: 59.22510147      KL_Loss: 11.99499702
-    Epoch:   200      LossNode: 106.24217987      Rec_Loss: 81.59996033      KL_Loss: 17.10463333
-    Epoch:   300      LossNode: 58.21086121      Rec_Loss: 46.07187653      KL_Loss: 3.30783653
-    Epoch:   400      LossNode: 56.94805145      Rec_Loss: 44.06615829      KL_Loss: 2.41705680
-    Epoch:   500      LossNode: 53.23116302      Rec_Loss: 50.19910431      KL_Loss: 3.22392797
-    Epoch:   600      LossNode: 60.21936798      Rec_Loss: 43.19996643      KL_Loss: 1.11672997
-    Epoch:   700      LossNode: 53.05686951      Rec_Loss: 51.41782379      KL_Loss: 2.69375038
-    Epoch:   800      LossNode: 54.29114914      Rec_Loss: 45.24431229      KL_Loss: 2.18053341
-    Epoch:   900      LossNode: 50.32286072      Rec_Loss: 44.80141449      KL_Loss: 2.18912911
-    Epoch:   999      LossNode: 54.02921677      Rec_Loss: 53.74685669      KL_Loss: 2.71439314
-
-Total GD training time: 0 hours 58 mins 55 secs
-Test MSE: 36.17853165
+Traceback (most recent call last):
+  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 279, in <module>
+    model, opt_state_node, loss, (rec_loss, kl_loss) = train_step(model, batch, opt_state_node, train_key)
+                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_jit.py", line 275, in __call__
+    return self._call(False, args, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_module.py", line 1096, in __call__
+    return self.__func__(self.__self__, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/equinox/_jit.py", line 244, in _call
+    marker, _, _ = out = self._cached(
+                         ^^^^^^^^^^^^^
+  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 215, in train_step
+    (loss, aux_data), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, batch, key)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 190, in loss_fn
+    X_recons, X_factors, (latents_mu, latents_logvars) = model(X, t, key)
+                                                         ^^^^^^^^^^^^^^^^
+  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 165, in __call__
+    zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/Projects/NeuralHub/examples/hierarchical-lfads/main.py", line 138, in integrate
+    control = diffrax.CubicInterpolation(t_eval, all_xs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gb21553/miniconda3/envs/jax/lib/python3.12/site-packages/diffrax/_global_interpolation.py", line 216, in __check_init__
+    jtu.tree_map(_check, *self.coeffs)
+TypeError: CubicInterpolation.__check_init__.<locals>._check() takes 4 positional arguments but 201 were given
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

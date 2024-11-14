@@ -68,8 +68,8 @@ T_horizon = 1.
 t_eval = np.linspace(0, T_horizon, data.shape[2])
 print("Data shape:", data.shape)
 
-# test_data = test_data[None, :, ::skip, :]
-test_data = data
+test_data = test_data[None, :, ::skip, :]
+# test_data = data
 
 #%%
 if run_folder==None:
@@ -334,7 +334,6 @@ plt.draw();
 ## Save the losses to a file
 # np.save(run_folder+"losses_lfads.npy", np.array(losses_node))
 
-# %%
 
 ## Test the model
 def test_model(model, batch):
@@ -347,7 +346,7 @@ def test_model(model, batch):
 # t = t_eval
 
 # batch = (test_data[0, 0:0+batch_size, ...], t_eval)
-X, t = sample_batch_portion(*(test_data[0, :15, ...], t_eval), traj_prop_min=1.0)
+X, t = sample_batch_portion(*(test_data[0, 4:5, ...], t_eval), traj_prop_min=1.0)
 # print("t", X.shape, t)
 X_hat, X_factors, X_lats = test_model(model, (X, t))
 
