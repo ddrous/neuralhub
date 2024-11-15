@@ -42,28 +42,28 @@ main_key = jax.random.PRNGKey(SEED)
 ## Model hps
 latent_size = 32
 factor_size = 16
-mlp_hidden_size = 64
+mlp_hidden_size = 32
 mlp_depth = 3
 
 ## Testing hps
-nb_test_trajs = 10
-nb_channel_vis = 4
+nb_test_trajs = -1
+nb_channel_vis = 2
 
 ## Optimiser hps
 init_lr = 3e-4
 
 ## Training hps
 print_every = 1
-nb_epochs = 50*2
+nb_epochs = 500
 batch_size = 9512//8
 traj_prop_train = 1.0
 
-train = True
+train = False
 
 ## Data hps
 data_folder = "./data/" if train else "../../data/"
-run_folder = "./runs/241114-152228-Test/" if train else "./"
-# run_folder = None if train else "./"
+# run_folder = "./runs/241114-152228-Test/" if train else "./"
+run_folder = None if train else "./"
 
 
 #%%
@@ -95,33 +95,6 @@ print("test data shape:", test_data.shape)
 
 # %%
 
-class Generator(eqx.Module):
-    conv1: eqx.Module
-    conv2: eqx.Module
-    conv3: eqx.Module
-    conv4: eqx.Module
-
-    def __init__(self, in_channels, hidden_channels, out_channels, key=None):
-        keys = jax.random.split(key, num=4)
-
-        self.conv1 = eqx.nn.Conv1d(in_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[0])
-        self.conv2 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[1])
-        self.conv3 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[2])
-        self.conv4 = eqx.nn.Conv1d(hidden_channels, out_channels, kernel_size=3, stride=1, padding="same", key=keys[3])
-
-    def __call__(self, x):
-        ## Add channel dimension to x (of shape n_latents)
-
-        x = jax.nn.relu(self.conv1(x[None, ...]))
-        x = jax.nn.relu(self.conv2(x))
-        x = jax.nn.relu(self.conv3(x))
-        # x = jax.nn.tanh(self.conv4(x))
-        x = self.conv4(x)
-
-        return x.T
-
-
-
 class NeuralODE(eqx.Module):
     data_size: int
     mlp_hidden_size: int
@@ -147,14 +120,13 @@ class NeuralODE(eqx.Module):
                                     use_bias=True, 
                                     activation=jax.nn.softplus,
                                     key=keys[0])
-        # self.generator = eqx.nn.MLP(latent_size, 
-        #                             latent_size*(data_size+1), 
-        #                             mlp_hidden_size*2, 
-        #                             mlp_depth*1, 
-        #                             use_bias=True, 
-        #                             activation=jax.nn.softplus,
-        #                             key=keys[1])
-        self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
+        self.generator = eqx.nn.MLP(latent_size, 
+                                    latent_size*(data_size+1), 
+                                    mlp_hidden_size*2, 
+                                    mlp_depth*1, 
+                                    use_bias=True, 
+                                    activation=jax.nn.softplus,
+                                    key=keys[1])
         # self.decoder_factor = eqx.nn.Linear(latent_size,
         #                                     factor_size,
         #                                     use_bias=True,
@@ -210,7 +182,7 @@ class NeuralODE(eqx.Module):
         # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
         x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
+        return x_recons, zs, (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
 
 
 
@@ -381,4 +353,5 @@ plt.ylim(-30, 30)
 plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
 
 # ## Save the results to a npz file
-np.savez(run_folder+"predictions_test.npz", trajs=X, recons=X_hat, latents=X_lats)
+np.savez(run_folder+"predictions_test.npz", X_test=X, X_recons=X_hat, X_latents=X_lats)
+np.savez(run_folder+"predictions_train.npz", X_train=X, X_recons=X_hat, X_latents=X_lats)
