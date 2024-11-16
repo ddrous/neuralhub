@@ -40,23 +40,25 @@ SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
-latent_size = 16
+latent_size = 8
 factor_size = 16
-mlp_hidden_size = 16
+mlp_hidden_size = 32
 mlp_depth = 3
+data_size = 2
 
 ## Testing hps
 nb_test_trajs = 10
-nb_channel_vis = 4
+nb_channel_vis = 1
 
 ## Optimiser hps
 init_lr = 1e-3
 
 ## Training hps
-print_every = 1
-nb_epochs = 200*2
-batch_size = 9512//8
+print_every = 50
+nb_epochs = 5000
+batch_size = 7695//4
 traj_prop_train = 1.0
+subsample_skip = 10
 
 train = True
 
@@ -76,10 +78,15 @@ _ = setup_run_folder(run_folder, os.path.basename(__file__))
 
 
 #%%
-with h5py.File(data_folder+'dataset.h5', "r") as f:
-    print("HDF5 Dataset Keys: %s" % f.keys())
-    train_data = np.array(f['train_encod_data'])
-    test_data = np.array(f['valid_encod_data'])
+# with h5py.File(data_folder+'dataset.h5', "r") as f:
+#     print("HDF5 Dataset Keys: %s" % f.keys())
+#     train_data = np.array(f['train_encod_data'])
+#     test_data = np.array(f['valid_encod_data'])
+
+train_data = np.load(data_folder+'sleep_data.npy').transpose(0, 2, 1)
+## Min Max Normalization of the data
+train_data = (train_data - np.min(train_data, keepdims=True)) / (np.max(train_data, keepdims=True) - np.min(train_data, keepdims=True))
+test_data = train_data
 
 data = train_data[None, :, ::, :]
 T_horizon = 1.
@@ -90,35 +97,40 @@ if nb_test_trajs != -1:
 else:
     test_data = test_data[None, :, ::, :]
 
+if subsample_skip != -1:
+    data = data[:, :, ::subsample_skip, :]
+    t_eval = t_eval[::subsample_skip]
+    test_data = test_data[:, :, ::subsample_skip, :]
+
 print("train data shape:", data.shape)
 print("test data shape:", test_data.shape)
 
 # %%
 
-class Generator(eqx.Module):
-    conv1: eqx.Module
-    conv2: eqx.Module
-    conv3: eqx.Module
-    conv4: eqx.Module
+# class Generator(eqx.Module):
+#     conv1: eqx.Module
+#     conv2: eqx.Module
+#     conv3: eqx.Module
+#     conv4: eqx.Module
 
-    def __init__(self, in_channels, hidden_channels, out_channels, key=None):
-        keys = jax.random.split(key, num=4)
+#     def __init__(self, in_channels, hidden_channels, out_channels, key=None):
+#         keys = jax.random.split(key, num=4)
 
-        self.conv1 = eqx.nn.Conv1d(in_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[0])
-        self.conv2 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[1])
-        self.conv3 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[2])
-        self.conv4 = eqx.nn.Conv1d(hidden_channels, out_channels, kernel_size=3, stride=1, padding="same", key=keys[3])
+#         self.conv1 = eqx.nn.Conv1d(in_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[0])
+#         self.conv2 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[1])
+#         self.conv3 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[2])
+#         self.conv4 = eqx.nn.Conv1d(hidden_channels, out_channels, kernel_size=3, stride=1, padding="same", key=keys[3])
 
-    def __call__(self, x):
-        ## Add channel dimension to x (of shape n_latents)
+#     def __call__(self, x):
+#         ## Add channel dimension to x (of shape n_latents)
 
-        x = jax.nn.relu(self.conv1(x[None, ...]))
-        x = jax.nn.relu(self.conv2(x))
-        x = jax.nn.relu(self.conv3(x))
-        # x = jax.nn.tanh(self.conv4(x))
-        x = self.conv4(x)
+#         x = jax.nn.relu(self.conv1(x[None, ...]))
+#         x = jax.nn.relu(self.conv2(x))
+#         x = jax.nn.relu(self.conv3(x))
+#         # x = jax.nn.tanh(self.conv4(x))
+#         x = self.conv4(x)
 
-        return x.T
+#         return x.T
 
 
 
@@ -147,14 +159,14 @@ class NeuralODE(eqx.Module):
                                     use_bias=True, 
                                     activation=jax.nn.softplus,
                                     key=keys[0])
-        # self.generator = eqx.nn.MLP(latent_size, 
-        #                             latent_size*(data_size+1), 
-        #                             mlp_hidden_size*2, 
-        #                             mlp_depth*1, 
-        #                             use_bias=True, 
-        #                             activation=jax.nn.softplus,
-        #                             key=keys[1])
-        self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
+        self.generator = eqx.nn.MLP(latent_size, 
+                                    latent_size*(data_size+1), 
+                                    mlp_hidden_size*2, 
+                                    mlp_depth*1, 
+                                    use_bias=True, 
+                                    activation=jax.nn.softplus,
+                                    key=keys[1])
+        # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
         # self.decoder_factor = eqx.nn.Linear(latent_size,
         #                                     factor_size,
         #                                     use_bias=True,
@@ -187,7 +199,7 @@ class NeuralODE(eqx.Module):
                     t1=t_eval[-1],
                     dt0=t_eval[1]-t_eval[0],
                     y0=y0,
-                    stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-4),
+                    stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     # adjoint=diffrax.RecursiveCheckpointAdjoint(),
                     max_steps=4096*1
@@ -218,7 +230,7 @@ class NeuralODE(eqx.Module):
 
 model_keys = jax.random.split(main_key, num=2)
 
-model = NeuralODE(data_size=32, 
+model = NeuralODE(data_size=data_size, 
                   latent_size=latent_size, 
                   factor_size=factor_size, 
                   mlp_hidden_size=mlp_hidden_size, 
@@ -246,6 +258,7 @@ def loss_fn(model, batch, key):
     # KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)
 
     # return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
+
     # return jnp.mean(rec_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
     return jnp.mean(rec_loss), (jnp.mean(rec_loss), 0.)
 
@@ -316,8 +329,8 @@ if train:
         losses_node.append(loss_epoch_node)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-            print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.8f}      Rec_Loss: {rec_loss:.8f}      KL_Loss: {kl_loss:.8f}", flush=True)
-            eqx.tree_serialise_leaves("data/best_model.eqx", model) ## just for checkpoint elsewhere
+            print(f"    Epoch: {epoch:-5d}      LossNode: {loss_epoch_node:.12f}      Rec_Loss: {rec_loss:.12f}      KL_Loss: {kl_loss:.12f}", flush=True)
+            eqx.tree_serialise_leaves(run_folder+"model_lfads.eqx", model) ## just for checkpoint elsewhere
 
     wall_time = time.time() - start_time
     time_in_hmsecs = seconds_to_hours(wall_time)
@@ -330,6 +343,7 @@ if train:
 else:
     model = eqx.tree_deserialise_leaves(run_folder+"model_lfads.eqx", model)
     losses_node = np.load(run_folder+"losses_lfads.npy")
+    # losses_node = []
     print("Model loaded from folder")
 
 
@@ -364,18 +378,18 @@ colors = colors*10
 
 ## Visualize channels trajectories
 traj_id = np.random.randint(0, X.shape[0])
-ch_vis_start = np.random.randint(0, X.shape[-1]-nb_channel_vis)
+ch_vis_start = np.random.randint(0, X.shape[-1]-nb_channel_vis+1)
 for i in range(ch_vis_start, ch_vis_start+nb_channel_vis):
     if i==0:
-        sbplot(t, X_hat[traj_id, :,i], "+", x_label='Time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X_hat[traj_id, :,i], "+-", x_label='Time', y_label='y', label=f'Pred', title=f'Trajectories', ax=ax, alpha=0.5, color=colors[i])
         sbplot(t, X[traj_id, :,i], "-", lw=1, label=f'True', ax=ax, color=colors[i])
     else:
-        sbplot(t, X_hat[traj_id, :,i], ".", x_label='Time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
+        sbplot(t, X_hat[traj_id, :,i], "x-", x_label='Time', y_label='y', ax=ax, alpha=0.5, color=colors[i])
         sbplot(t, X[traj_id, :,i], "-", lw=1, ax=ax, color=colors[i])
 
 ## Limit ax x and y axis to (-5,5)
 plt.draw();
-plt.ylim(-30, 30)
+# plt.ylim(-30/10000, 30/10000)
 
 ## Save the plot
 plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
