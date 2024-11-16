@@ -51,4 +51,8 @@ examples/lotka-voltera/lightning_logs/*
 
 
 
-examples/herarchical_lfads/runs/*
+examples/hierarchical-lfads/runs/*
+examples/hierarchical-lfads/data/sleep_data.npy
+
+
+!examples/hierarchical-lfads/runs/241115-210451-Sleep
