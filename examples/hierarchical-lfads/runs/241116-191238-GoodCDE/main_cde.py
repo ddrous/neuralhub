@@ -40,27 +40,27 @@ SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
-latent_size = 8
-factor_size = 16
+latent_size = 16
+factor_size = 32
 mlp_hidden_size = 32
 mlp_depth = 3
 data_size = 2
 
 ## Testing hps
-nb_test_trajs = 10
+nb_test_trajs = -1
 nb_channel_vis = 1
 
 ## Optimiser hps
 init_lr = 1e-3
 
 ## Training hps
-print_every = 50
-nb_epochs = 5000
+print_every = 10
+nb_epochs = 100
 batch_size = 7695//4
-traj_prop_train = 1.0
-subsample_skip = 10
+traj_prop_train = 0.4
+subsample_skip = 1
 
-train = True
+train = False
 
 ## Data hps
 data_folder = "./data/" if train else "../../data/"
@@ -105,6 +105,20 @@ if subsample_skip != -1:
 print("train data shape:", data.shape)
 print("test data shape:", test_data.shape)
 
+
+# %%
+## Visualize the latent space after a UMAP projection of X_lats
+import umap
+
+## Load the latels for the plotting from the 'anotations.csv'
+labels = []
+with open(data_folder+'annotations.csv', 'r') as f:
+    for line in f:
+        if 'subject' not in line:
+            human = int(line.split(',')[0].strip())
+            sleep_phase = int(line.split(',')[1].strip())
+            labels.append((human, sleep_phase))
+
 # %%
 
 # class Generator(eqx.Module):
@@ -143,7 +157,7 @@ class NeuralODE(eqx.Module):
     encoder: eqx.Module
     generator: eqx.Module
     decoder_recons: eqx.Module
-    # decoder_factor: eqx.Module
+    decoder_factor: eqx.Module
 
     def __init__(self, data_size, latent_size, factor_size, mlp_hidden_size, mlp_depth, key=None):
         self.data_size = data_size
@@ -167,11 +181,11 @@ class NeuralODE(eqx.Module):
                                     activation=jax.nn.softplus,
                                     key=keys[1])
         # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
-        # self.decoder_factor = eqx.nn.Linear(latent_size,
-        #                                     factor_size,
-        #                                     use_bias=True,
-        #                                     key=keys[3])
-        self.decoder_recons = eqx.nn.Linear(latent_size, 
+        self.decoder_factor = eqx.nn.Linear(latent_size,
+                                            factor_size,
+                                            use_bias=True,
+                                            key=keys[3])
+        self.decoder_recons = eqx.nn.Linear(factor_size, 
                                             data_size, 
                                             use_bias=True, 
                                             key=keys[2])
@@ -219,10 +233,10 @@ class NeuralODE(eqx.Module):
 
         zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
 
-        # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
-        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
+        x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
+        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(x_factors)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
+        return x_recons, x_factors[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
 
 
 
@@ -297,7 +311,7 @@ def sample_batch_portion(outputs, t_evals, traj_prop=traj_prop_train):
 #%%
 
 if train:
-    sched_node = optax.exponential_decay(init_value=init_lr, transition_steps=20, decay_rate=0.99)
+    sched_node = optax.exponential_decay(init_value=init_lr, transition_steps=10, decay_rate=0.99)
     opt_node = optax.adam(sched_node)
     opt_state_node = opt_node.init(eqx.filter(model, eqx.is_array))
 
@@ -342,8 +356,11 @@ if train:
 
 else:
     model = eqx.tree_deserialise_leaves(run_folder+"model_lfads.eqx", model)
-    losses_node = np.load(run_folder+"losses_lfads.npy")
-    # losses_node = []
+    try:
+        losses_node = np.load(run_folder+"losses_lfads.npy")
+    except:
+        losses_node = []
+
     print("Model loaded from folder")
 
 
@@ -395,4 +412,25 @@ plt.draw();
 plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
 
 # ## Save the results to a npz file
-np.savez(run_folder+"predictions_test.npz", trajs=X, recons=X_hat, latents=X_lats)
+# np.savez(run_folder+"predictions_test.npz", trajs=X, recons=X_hat, latents=X_lats)
+np.savez(run_folder+"latents.npz", latents=X_lats)
+
+
+# %%
+reducer = umap.UMAP()
+X_lats_umap = reducer.fit_transform(X_lats, min_dist=1.5)
+
+colors = np.array(labels)
+color_table = {0: 'b', 1: 'g', 2: 'r', 3: 'c', 4: 'm', 5: 'y', 6: 'k', 7: 'w'}
+humans = np.array([color_table[lab] for lab in colors[:,0]])
+
+
+# %%
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+# sbplot(X_lats_umap[:,0], X_lats_umap[:,1], "o", x_label='UMAP1', y_label='UMAP2', title='UMAP of Latent Space', ax=ax)
+
+## Plot using scatter and collors
+ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,0], cmap='tab20', alpha=0.5)
+
+plt.draw();
+plt.savefig(run_folder+"umap_latents.png", dpi=100, bbox_inches='tight')
