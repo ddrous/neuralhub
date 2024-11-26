@@ -40,10 +40,10 @@ SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
-latent_size = 16
-factor_size = 32
-mlp_hidden_size = 32
-mlp_depth = 3
+latent_size = 64
+factor_size = 64
+mlp_hidden_size = 128
+mlp_depth = 4
 data_size = 2
 
 ## Testing hps
@@ -55,10 +55,12 @@ init_lr = 1e-3
 
 ## Training hps
 print_every = 10
-nb_epochs = 100
+nb_epochs = 400
 batch_size = 7695//4
-traj_prop_train = 0.4
+traj_prop_train = 1.0
 subsample_skip = 1
+train_horizon = 500
+variational = False
 
 train = True
 
@@ -88,64 +90,25 @@ train_data = np.load(data_folder+'sleep_data.npy').transpose(0, 2, 1)
 train_data = (train_data - np.min(train_data, keepdims=True)) / (np.max(train_data, keepdims=True) - np.min(train_data, keepdims=True))
 test_data = train_data
 
-data = train_data[None, :, ::, :]
+data = train_data[None, :, :train_horizon:, :]
 T_horizon = 1.
 t_eval = np.linspace(0, T_horizon, data.shape[2])
 
 if nb_test_trajs != -1:
-    test_data = test_data[None, :nb_test_trajs, ::, :]
+    test_data = test_data[None, :nb_test_trajs, :train_horizon:, :]
 else:
-    test_data = test_data[None, :, ::, :]
+    test_data = test_data[None, :, :train_horizon:, :]
 
 if subsample_skip != -1:
-    data = data[:, :, ::subsample_skip, :]
+    data = data[:, :, :train_horizon:subsample_skip, :]
     t_eval = t_eval[::subsample_skip]
-    test_data = test_data[:, :, ::subsample_skip, :]
+    test_data = test_data[:, :, :train_horizon:subsample_skip, :]
 
 print("train data shape:", data.shape)
 print("test data shape:", test_data.shape)
 
 
 # %%
-## Visualize the latent space after a UMAP projection of X_lats
-import umap
-
-## Load the latels for the plotting from the 'anotations.csv'
-labels = []
-with open(data_folder+'annotations.csv', 'r') as f:
-    for line in f:
-        if 'subject' not in line:
-            human = int(line.split(',')[0].strip())
-            sleep_phase = int(line.split(',')[1].strip())
-            labels.append((human, sleep_phase))
-
-# %%
-
-# class Generator(eqx.Module):
-#     conv1: eqx.Module
-#     conv2: eqx.Module
-#     conv3: eqx.Module
-#     conv4: eqx.Module
-
-#     def __init__(self, in_channels, hidden_channels, out_channels, key=None):
-#         keys = jax.random.split(key, num=4)
-
-#         self.conv1 = eqx.nn.Conv1d(in_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[0])
-#         self.conv2 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[1])
-#         self.conv3 = eqx.nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding="same", key=keys[2])
-#         self.conv4 = eqx.nn.Conv1d(hidden_channels, out_channels, kernel_size=3, stride=1, padding="same", key=keys[3])
-
-#     def __call__(self, x):
-#         ## Add channel dimension to x (of shape n_latents)
-
-#         x = jax.nn.relu(self.conv1(x[None, ...]))
-#         x = jax.nn.relu(self.conv2(x))
-#         x = jax.nn.relu(self.conv3(x))
-#         # x = jax.nn.tanh(self.conv4(x))
-#         x = self.conv4(x)
-
-#         return x.T
-
 
 
 class NeuralODE(eqx.Module):
@@ -153,21 +116,24 @@ class NeuralODE(eqx.Module):
     mlp_hidden_size: int
     mlp_depth: int
     latent_size: int
+    variational: bool
 
     encoder: eqx.Module
     generator: eqx.Module
     decoder_recons: eqx.Module
-    decoder_factor: eqx.Module
+    # decoder_factor: eqx.Module
 
-    def __init__(self, data_size, latent_size, factor_size, mlp_hidden_size, mlp_depth, key=None):
+
+    def __init__(self, data_size, latent_size, factor_size, variational, mlp_hidden_size, mlp_depth, key=None):
         self.data_size = data_size
         self.mlp_hidden_size = mlp_hidden_size
         self.mlp_depth = mlp_depth
         self.latent_size = latent_size
+        self.variational = variational
 
         keys = jax.random.split(key, num=4)
         self.encoder = eqx.nn.MLP(data_size, 
-                                    latent_size*2, 
+                                    latent_size*2 if self.variational else latent_size, 
                                     mlp_hidden_size, 
                                     mlp_depth, 
                                     use_bias=True, 
@@ -181,11 +147,11 @@ class NeuralODE(eqx.Module):
                                     activation=jax.nn.softplus,
                                     key=keys[1])
         # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
-        self.decoder_factor = eqx.nn.Linear(latent_size,
-                                            factor_size,
-                                            use_bias=True,
-                                            key=keys[3])
-        self.decoder_recons = eqx.nn.Linear(factor_size, 
+        # self.decoder_factor = eqx.nn.Linear(latent_size,
+        #                                     factor_size,
+        #                                     use_bias=True,
+        #                                     key=keys[3])
+        self.decoder_recons = eqx.nn.Linear(latent_size, 
                                             data_size, 
                                             use_bias=True, 
                                             key=keys[2])
@@ -198,9 +164,11 @@ class NeuralODE(eqx.Module):
             return jax.nn.tanh(y_next)
 
         def integrate(y0_mu, y0_logvar, key, all_xs):
-            eps = jax.random.normal(key, y0_mu.shape)
-            # y0 = y0_mu + eps*jnp.exp(0.5*y0_logvar)
-            y0 = y0_mu
+            if self.variational:
+                eps = jax.random.normal(key, y0_mu.shape)
+                y0 = y0_mu + eps*jnp.exp(0.5*y0_logvar)
+            else:
+                y0 = y0_mu
 
             coeffs = diffrax.backward_hermite_coefficients(t_eval, all_xs)
             control = diffrax.CubicInterpolation(t_eval, coeffs)
@@ -223,7 +191,11 @@ class NeuralODE(eqx.Module):
 
         x0s = xs[:, 0, ...]       ## Shape: (batch, data_size)
         z0s = eqx.filter_vmap(self.encoder)(x0s)        ## Shape: (batch, 2*latent_size)
-        z0s_mu, z0s_logvar = jnp.split(z0s, 2, axis=-1)
+
+        if self.variational:
+            z0s_mu, z0s_logvar = jnp.split(z0s, 2, axis=-1)
+        else:
+            z0s_mu, z0s_logvar = z0s, None
 
         keys = jax.random.split(key, num=x0s.shape[0])
 
@@ -233,10 +205,11 @@ class NeuralODE(eqx.Module):
 
         zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
 
-        x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
-        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(x_factors)        ## Shape: (batch, T, data_size)
+        # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
+        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
 
-        return x_recons, x_factors[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
+        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
+        # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
 
 
 
@@ -247,6 +220,7 @@ model_keys = jax.random.split(main_key, num=2)
 model = NeuralODE(data_size=data_size, 
                   latent_size=latent_size, 
                   factor_size=factor_size, 
+                  variational=variational,
                   mlp_hidden_size=mlp_hidden_size, 
                   mlp_depth=mlp_depth, 
                   key=model_keys[0])
@@ -256,7 +230,7 @@ model = NeuralODE(data_size=data_size,
 
 def loss_fn(model, batch, key):
     X, t = batch
-    X_recons, X_latent, (latents_mu, latents_logvars) = model(X, t, key)
+    X_recons, _, (latents_mu, latents_logvars) = model(X, t, key)
 
     ## MSE loss
     rec_loss = jnp.mean((X-X_recons)**2, axis=(1,2))
@@ -264,17 +238,17 @@ def loss_fn(model, batch, key):
     ### Another reconstruction loss
     # BCE_loss = jnp.sum(-xs*jnp.log(recon_xs) - (1-xs)*jnp.log(1-recon_xs), axis=(1,2,3))
 
-    # ## KL divergence between two gaussians
-    # mu, var = latents_mu, jnp.exp(latents_logvars)
-    # # target_mu, target_var = 0., 6.7**2
-    # target_mu, target_var = 0., 1.0**2
-    # # KL_loss = -0.5 * jnp.sum(1 + latents_logvars - latents_mu**2 - jnp.exp(latents_logvars), axis=1)
-    # KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)
-
-    # return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
-
+    if model.variational:
+        ## KL divergence between two gaussians
+        mu, var = latents_mu, jnp.exp(latents_logvars)
+        # target_mu, target_var = 0., 6.7**2
+        target_mu, target_var = 0., 1.0**2
+        # KL_loss = -0.5 * jnp.sum(1 + latents_logvars - latents_mu**2 - jnp.exp(latents_logvars), axis=1)
+        KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)
+        return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
+    else:
+        return jnp.mean(rec_loss), (jnp.mean(rec_loss), 0.)
     # return jnp.mean(rec_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))
-    return jnp.mean(rec_loss), (jnp.mean(rec_loss), 0.)
 
 
 
@@ -416,19 +390,73 @@ plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
 np.savez(run_folder+"latents.npz", latents=X_lats)
 
 
-# %%
-reducer = umap.UMAP()
-X_lats_umap = reducer.fit_transform(X_lats, min_dist=0.1)
-
-colors = np.array(labels)
+# %%[markdown]
+## Setup UMAP and plot the latents
 
 
 # %%
+## Visualize the latent space after a UMAP projection of X_lats
+import umap
+import pandas as pd
+
+# ## Load the latels for the plotting from the 'anotations.csv'
+# labels = []
+# with open(data_folder+'annotations.csv', 'r') as f:
+#     for line in f:
+#         if 'subject' not in line:
+#             human = int(line.split(',')[0].strip())
+#             sleep_phase = int(line.split(',')[1].strip())
+#             labels.append((human, sleep_phase))
+
+## Davide's approach to reading CSV
+annotations = pd.read_csv(data_folder+'annotations.csv')
+event_id = {'Sleep stage W': 1,
+            'Sleep stage 1': 2,
+            'Sleep stage 2': 3,
+            'Sleep stage 3/4': 4,
+            'Sleep stage R': 5}
+
+# invert the dictionary
+event_id_inv = {v: k for k, v in event_id.items()}
+annotations = annotations[annotations['subject'] == 1]
+indices = annotations.index.to_list()
+
+
+#%%
+
+### My original way of plotting things
+# reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
+# X_lats_umap = reducer.fit_transform(X_lats, min_dist=0.1)
+
+# colors = np.array(labels)
+# fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+# # sbplot(X_lats_umap[:,0], X_lats_umap[:,1], "o", x_label='UMAP1', y_label='UMAP2', title='UMAP of Latent Space', ax=ax)
+
+# ## Plot using scatter and collors
+# ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,0], cmap='tab20', alpha=0.5)
+
+
+
+
+### The Davide way of plotting things
+# %matplotlib inline
+umap = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
+embeddings = umap.fit_transform(X_lats[indices, :]) # TEST
+
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-# sbplot(X_lats_umap[:,0], X_lats_umap[:,1], "o", x_label='UMAP1', y_label='UMAP2', title='UMAP of Latent Space', ax=ax)
+unique_conditions = annotations['condition'].unique()
+for condition in unique_conditions:
+    print(condition)
+    condition_mask = annotations['condition'] == condition#
+    # Plot a scatter plot giving a distinct color to each condition from event_id_inv
+    plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=event_id_inv[condition], alpha=0.5)
+    #plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=condition)
+plt.legend()
+plt.xlabel('UMAP 1')
+plt.ylabel('UMAP 2')
 
-## Plot using scatter and collors
-ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,0], cmap='tab20', alpha=0.5)
+
+# %%
 
 plt.draw();
 plt.savefig(run_folder+"umap_latents.png", dpi=100, bbox_inches='tight')
