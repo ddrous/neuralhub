@@ -1,8 +1,12 @@
 Available devices: [CudaDevice(id=0)]
-Created a new run folder at: ./runs/241125-183155/
+Using existing run folder: ./runs/241114-152228-Test/
 Completed copied scripts 
-train data shape: (1, 7695, 500, 2)
-test data shape: (1, 7695, 500, 2)
+HDF5 Dataset Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
+train data shape: (1, 6925, 500, 2)
+test data shape: (1, 770, 500, 2)
+Number of learnable parameters in the encoder: 4.3 k
+Number of learnable parameters in the genetor: 20.8 k
+Number of learnable parameters in the reconstructing decoder: 0.0 k
 
 
 === Beginning Training ... ===
@@ -10,37 +14,40 @@ test data shape: (1, 7695, 500, 2)
 Compiling function "train_step" ...
 
 Compiling function "train_step" ...
-    Epoch:     0      LossNode: 0.184379979968      Rec_Loss: 0.019016796723      KL_Loss: 0.000000000000
-    Epoch:     1      LossNode: 0.059860672802      Rec_Loss: 0.011122203432      KL_Loss: 0.000000000000
-    Epoch:     2      LossNode: 0.028896287084      Rec_Loss: 0.022619327530      KL_Loss: 0.000000000000
-    Epoch:     3      LossNode: 0.012574034743      Rec_Loss: 0.027112096548      KL_Loss: 0.000000000000
-    Epoch:    10      LossNode: 0.001305269892      Rec_Loss: 0.000780519098      KL_Loss: 0.000000000000
-    Epoch:    20      LossNode: 0.000900208950      Rec_Loss: 0.000657371653      KL_Loss: 0.000000000000
-    Epoch:    30      LossNode: 0.000857713108      Rec_Loss: 0.000520736095      KL_Loss: 0.000000000000
-    Epoch:    40      LossNode: 0.000931754068      Rec_Loss: 0.000652546063      KL_Loss: 0.000000000000
-    Epoch:    50      LossNode: 0.000957536220      Rec_Loss: 0.000680206227      KL_Loss: 0.000000000000
-    Epoch:    60      LossNode: 0.000913664349      Rec_Loss: 0.000672395225      KL_Loss: 0.000000000000
-    Epoch:    70      LossNode: 0.000922606909      Rec_Loss: 0.000579937187      KL_Loss: 0.000000000000
-    Epoch:    80      LossNode: 0.000897258986      Rec_Loss: 0.000470381201      KL_Loss: 0.000000000000
-    Epoch:    90      LossNode: 0.001004036632      Rec_Loss: 0.000638687052      KL_Loss: 0.000000000000
-    Epoch:   100      LossNode: 0.000826719508      Rec_Loss: 0.000523322145      KL_Loss: 0.000000000000
-    Epoch:   110      LossNode: 0.000665547501      Rec_Loss: 0.000463545031      KL_Loss: 0.000000000000
-    Epoch:   120      LossNode: 0.000428669853      Rec_Loss: 0.000277914369      KL_Loss: 0.000000000000
-    Epoch:   130      LossNode: 0.000516219006      Rec_Loss: 0.000338571466      KL_Loss: 0.000000000000
-    Epoch:   140      LossNode: 0.000384845160      Rec_Loss: 0.000299156236      KL_Loss: 0.000000000000
-    Epoch:   150      LossNode: 0.000479036215      Rec_Loss: 0.000332213676      KL_Loss: 0.000000000000
-    Epoch:   160      LossNode: 0.000361431681      Rec_Loss: 0.000230345875      KL_Loss: 0.000000000000
-    Epoch:   170      LossNode: 0.000321832456      Rec_Loss: 0.000252958911      KL_Loss: 0.000000000000
-    Epoch:   180      LossNode: 0.000424864294      Rec_Loss: 0.000246096577      KL_Loss: 0.000000000000
-    Epoch:   190      LossNode: 0.000336293655      Rec_Loss: 0.000383574254      KL_Loss: 0.000000000000
-    Epoch:   200      LossNode: 0.000326859474      Rec_Loss: 0.000280893757      KL_Loss: 0.000000000000
-    Epoch:   210      LossNode: 0.000363915897      Rec_Loss: 0.000402262202      KL_Loss: 0.000000000000
-    Epoch:   220      LossNode: 0.000280860055      Rec_Loss: 0.000196728943      KL_Loss: 0.000000000000
-    Epoch:   230      LossNode: 0.000276045466      Rec_Loss: 0.000196952431      KL_Loss: 0.000000000000
-    Epoch:   240      LossNode: 0.000292374985      Rec_Loss: 0.000252563739      KL_Loss: 0.000000000000
-    Epoch:   250      LossNode: 0.000275603466      Rec_Loss: 0.000192383523      KL_Loss: 0.000000000000
-    Epoch:   260      LossNode: 0.000267708761      Rec_Loss: 0.000201637435      KL_Loss: 0.000000000000
-    Epoch:   270      LossNode: 0.000291703647      Rec_Loss: 0.000226130185      KL_Loss: 0.000000000000
-    Epoch:   280      LossNode: 0.000306314934      Rec_Loss: 0.000234675637      KL_Loss: 0.000000000000
-    Epoch:   290      LossNode: 0.000277497427      Rec_Loss: 0.000234277482      KL_Loss: 0.000000000000
-    Epoch:   300      LossNode: 0.000257411157      Rec_Loss: 0.000150339169      KL_Loss: 0.000000000000
+    Epoch:     0      LossNode: 31.151908874512      Rec_Loss: 1.084496259689      KL_Loss: 29.178350448608
+    Epoch:     1      LossNode: 29.154464721680      Rec_Loss: 0.831584572792      KL_Loss: 27.764486312866
+    Epoch:     2      LossNode: 27.791545867920      Rec_Loss: 0.817227602005      KL_Loss: 26.467882156372
+    Epoch:     3      LossNode: 26.471714019775      Rec_Loss: 0.751391708851      KL_Loss: 25.221826553345
+    Epoch:    10      LossNode: 11.463539123535      Rec_Loss: 0.549709439278      KL_Loss: 9.575060844421
+    Epoch:    20      LossNode: 1.260492086411      Rec_Loss: 0.499981015921      KL_Loss: 0.548874974251
+    Epoch:    30      LossNode: 0.592282772064      Rec_Loss: 0.470151871443      KL_Loss: 0.076241038740
+    Epoch:    40      LossNode: 0.324537307024      Rec_Loss: 0.269249528646      KL_Loss: 0.038412544876
+    Epoch:    50      LossNode: 0.196872144938      Rec_Loss: 0.156413540244      KL_Loss: 0.024775449187
+    Epoch:    60      LossNode: 0.180652856827      Rec_Loss: 0.148682519794      KL_Loss: 0.017965056002
+    Epoch:    70      LossNode: 0.161158040166      Rec_Loss: 0.142689853907      KL_Loss: 0.013514052145
+    Epoch:    80      LossNode: 0.151738449931      Rec_Loss: 0.139512166381      KL_Loss: 0.010902696289
+    Epoch:    90      LossNode: 0.144744232297      Rec_Loss: 0.131293296814      KL_Loss: 0.009217145853
+    Epoch:   100      LossNode: 0.139939725399      Rec_Loss: 0.131742730737      KL_Loss: 0.006881719921
+    Epoch:   110      LossNode: 0.135226026177      Rec_Loss: 0.127253785729      KL_Loss: 0.005661572795
+    Epoch:   120      LossNode: 0.141118258238      Rec_Loss: 0.131720989943      KL_Loss: 0.005072364584
+    Epoch:   130      LossNode: 0.139019101858      Rec_Loss: 0.128783494234      KL_Loss: 0.004485919140
+    Epoch:   140      LossNode: 0.131512179971      Rec_Loss: 0.129279047251      KL_Loss: 0.003960416187
+    Epoch:   150      LossNode: 0.128162384033      Rec_Loss: 0.124227352440      KL_Loss: 0.003337982809
+    Epoch:   160      LossNode: 0.129248499870      Rec_Loss: 0.126197606325      KL_Loss: 0.003026118036
+    Epoch:   170      LossNode: 0.129425942898      Rec_Loss: 0.125259354711      KL_Loss: 0.003018275602
+    Epoch:   180      LossNode: 0.123666971922      Rec_Loss: 0.118963226676      KL_Loss: 0.003215205623
+    Epoch:   190      LossNode: 0.125927045941      Rec_Loss: 0.123474702239      KL_Loss: 0.002605077345
+    Epoch:   199      LossNode: 0.122792303562      Rec_Loss: 0.119748525321      KL_Loss: 0.002118789591
+2024-11-27 19:32:07.778981: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:479] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2024-11-27 19:32:07.788946: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:10575] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2024-11-27 19:32:07.788969: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1442] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2024-11-27 19:32:08.317590: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Total GD training time: 5 hours 23 mins 51 secs
+Training Complete, saving model to folder: ./runs/241114-152228-Test/
+Test MSE: 0.10903177
+3
+5
+4
+1
+2

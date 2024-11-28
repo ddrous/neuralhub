@@ -62,7 +62,7 @@ subsample_skip = 1
 train_horizon = 500
 variational = True
 
-train = True
+train = False
 
 ## Data hps
 data_folder = "./data/new_sleep/" if train else "../../data/new_sleep/"
@@ -83,7 +83,7 @@ _ = setup_run_folder(run_folder, os.path.basename(__file__))
 with h5py.File(data_folder+'dataset.h5', "r") as f:
     print("HDF5 Dataset Keys: %s" % f.keys())
     train_data = np.array(f['train_encod_data'])
-    test_data = np.array(f['valid_encod_data'])
+    test_data = np.array(f['train_encod_data'])
 
 # train_data = np.load(data_folder+'data.npy').transpose(0, 2, 1)
 # ## Min Max Normalization of the data
@@ -427,7 +427,7 @@ import pandas as pd
 #             labels.append((human, sleep_phase))
 
 ## Davide's approach to reading CSV
-annotations = pd.read_csv(data_folder+'valid_annotations.csv')
+annotations = pd.read_csv(data_folder+'train_annotations.csv')
 event_id = {'Sleep stage W': 1,
             'Sleep stage 1': 2,
             'Sleep stage 2': 3,
@@ -436,11 +436,12 @@ event_id = {'Sleep stage W': 1,
 
 # invert the dictionary
 event_id_inv = {v: k for k, v in event_id.items()}
-annotations = annotations[annotations['subject'] == 1]
-indices = annotations.index.to_list()
+# annotations = annotations[annotations['subject'] == 1]
+# indices = annotations.index.to_list()
 
 
 #%%
+# %matplotlib qt
 
 ### My original way of plotting things
 # reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
@@ -458,14 +459,15 @@ indices = annotations.index.to_list()
 
 ### The Davide way of plotting things
 # %matplotlib inline
-umap = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
-embeddings = umap.fit_transform(X_lats[indices, :]) # TEST
+reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
+# embeddings = reducer.fit_transform(X_lats[indices, :]) # TEST
+embeddings = reducer.fit_transform(X_lats[:, :]) # TEST
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 unique_conditions = annotations['condition'].unique()
 for condition in unique_conditions:
     print(condition)
-    condition_mask = annotations['condition'] == condition#
+    condition_mask = annotations['condition'] == condition
     # Plot a scatter plot giving a distinct color to each condition from event_id_inv
     plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=event_id_inv[condition], alpha=0.5)
     #plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=condition)

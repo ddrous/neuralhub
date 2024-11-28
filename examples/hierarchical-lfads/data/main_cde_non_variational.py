@@ -142,11 +142,11 @@ class NeuralODE(eqx.Module):
                                     activation=jax.nn.softplus,
                                     key=keys[0])
         self.generator = eqx.nn.MLP(latent_size, 
-                                    latent_size*(data_size+1)*1 if self.variational else latent_size*(data_size+1),
+                                    latent_size*(data_size+1), 
                                     mlp_hidden_size*2, 
                                     mlp_depth+1, 
                                     use_bias=True, 
-                                    activation=jax.nn.softplus, 
+                                    activation=jax.nn.softplus,
                                     key=keys[1])
         # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
         # self.decoder_factor = eqx.nn.Linear(latent_size,
@@ -162,19 +162,7 @@ class NeuralODE(eqx.Module):
         """ Forward call of the Neural ODE """
 
         def vector_field(t, y, args):
-            base_key, = args
-            key_t = jax.random.fold_in(base_key, (jnp.array([t])*1e9).astype(int)[0])
-
-            ## Forward pass through the encoder
-            y_next = self.generator(y).reshape(self.latent_size, 1*(self.data_size+1) if self.variational else self.data_size+1)
-
-            ## Sample and return the next state
-            if self.variational:
-                # mu_y, logvar_y = jnp.split(y_next, 2, axis=-1)
-                mu_y, logvar_y = y_next, jnp.log(jnp.ones_like(y_next) * 0.001**2)
-                eps = jax.random.normal(key_t, mu_y.shape)
-                y_next = mu_y + eps*jnp.exp(0.5*logvar_y)
-
+            y_next = self.generator(y).reshape(self.latent_size, self.data_size+1)
             return jax.nn.tanh(y_next)
 
         def integrate(y0_mu, y0_logvar, key, all_xs):
@@ -190,7 +178,7 @@ class NeuralODE(eqx.Module):
             sol = diffrax.diffeqsolve(
                     diffrax.ControlTerm(vector_field, control).to_ode(),
                     diffrax.Tsit5(),
-                    args=(key,),
+                    # args=(all_xs,),
                     t0=t_eval[0],
                     t1=t_eval[-1],
                     dt0=t_eval[1]-t_eval[0],
@@ -198,7 +186,7 @@ class NeuralODE(eqx.Module):
                     stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     # adjoint=diffrax.RecursiveCheckpointAdjoint(),
-                    max_steps=4096*5
+                    max_steps=4096*1
                 )
 
             return sol.ys
@@ -222,8 +210,8 @@ class NeuralODE(eqx.Module):
         # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
         x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
-        # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)        ## TODO collect the actual factor
+        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
+        # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)       ## TODO collect the actual factor
 
 
 
@@ -260,7 +248,7 @@ def loss_fn(model, batch, key):
         ## KL divergence between two gaussians
         mu, var = latents_mu, jnp.exp(latents_logvars)
         # target_mu, target_var = 0., 6.7**2
-        target_mu, target_var = 0., 0.1**2
+        target_mu, target_var = 0., 1.0**2
         # KL_loss = -0.5 * jnp.sum(1 + latents_logvars - latents_mu**2 - jnp.exp(latents_logvars), axis=1)
         KL_loss = 0.5 * jnp.sum(jnp.log(var/target_var) + (target_var + (mu - target_mu)**2)/var - 1, axis=1)
         return jnp.mean(rec_loss + KL_loss), (jnp.mean(rec_loss), jnp.mean(KL_loss))

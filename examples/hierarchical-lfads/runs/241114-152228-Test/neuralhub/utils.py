@@ -232,3 +232,6 @@ def setup_run_folder(folder_path, script_name):
     print("Completed copied scripts ")
 
     return None
+
+def count_params(module):
+    return sum(x.size for x in jax.tree_util.tree_leaves(eqx.filter(module, eqx.is_array)) if x is not None)
