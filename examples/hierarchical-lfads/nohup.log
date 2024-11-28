@@ -1,12 +1,12 @@
 Available devices: [CudaDevice(id=0)]
-Using existing run folder: ./runs/241114-152228-Test/
+Created a new run folder at: ./runs/241128-154140/
 Completed copied scripts 
 HDF5 Dataset Keys: <KeysViewHDF5 ['train_encod_data', 'train_recon_data', 'valid_encod_data', 'valid_recon_data']>
 train data shape: (1, 6925, 500, 2)
-test data shape: (1, 770, 500, 2)
-Number of learnable parameters in the encoder: 4.3 k
-Number of learnable parameters in the genetor: 20.8 k
-Number of learnable parameters in the reconstructing decoder: 0.0 k
+test data shape: (1, 6925, 500, 2)
+Number of learnable parameters in the encoder: 7.5 k
+Number of learnable parameters in the genetor: 33.3 k
+Number of learnable parameters in the reconstructing decoder: 5.3 k
 
 
 === Beginning Training ... ===
@@ -14,40 +14,26 @@ Number of learnable parameters in the reconstructing decoder: 0.0 k
 Compiling function "train_step" ...
 
 Compiling function "train_step" ...
-    Epoch:     0      LossNode: 31.151908874512      Rec_Loss: 1.084496259689      KL_Loss: 29.178350448608
-    Epoch:     1      LossNode: 29.154464721680      Rec_Loss: 0.831584572792      KL_Loss: 27.764486312866
-    Epoch:     2      LossNode: 27.791545867920      Rec_Loss: 0.817227602005      KL_Loss: 26.467882156372
-    Epoch:     3      LossNode: 26.471714019775      Rec_Loss: 0.751391708851      KL_Loss: 25.221826553345
-    Epoch:    10      LossNode: 11.463539123535      Rec_Loss: 0.549709439278      KL_Loss: 9.575060844421
-    Epoch:    20      LossNode: 1.260492086411      Rec_Loss: 0.499981015921      KL_Loss: 0.548874974251
-    Epoch:    30      LossNode: 0.592282772064      Rec_Loss: 0.470151871443      KL_Loss: 0.076241038740
-    Epoch:    40      LossNode: 0.324537307024      Rec_Loss: 0.269249528646      KL_Loss: 0.038412544876
-    Epoch:    50      LossNode: 0.196872144938      Rec_Loss: 0.156413540244      KL_Loss: 0.024775449187
-    Epoch:    60      LossNode: 0.180652856827      Rec_Loss: 0.148682519794      KL_Loss: 0.017965056002
-    Epoch:    70      LossNode: 0.161158040166      Rec_Loss: 0.142689853907      KL_Loss: 0.013514052145
-    Epoch:    80      LossNode: 0.151738449931      Rec_Loss: 0.139512166381      KL_Loss: 0.010902696289
-    Epoch:    90      LossNode: 0.144744232297      Rec_Loss: 0.131293296814      KL_Loss: 0.009217145853
-    Epoch:   100      LossNode: 0.139939725399      Rec_Loss: 0.131742730737      KL_Loss: 0.006881719921
-    Epoch:   110      LossNode: 0.135226026177      Rec_Loss: 0.127253785729      KL_Loss: 0.005661572795
-    Epoch:   120      LossNode: 0.141118258238      Rec_Loss: 0.131720989943      KL_Loss: 0.005072364584
-    Epoch:   130      LossNode: 0.139019101858      Rec_Loss: 0.128783494234      KL_Loss: 0.004485919140
-    Epoch:   140      LossNode: 0.131512179971      Rec_Loss: 0.129279047251      KL_Loss: 0.003960416187
-    Epoch:   150      LossNode: 0.128162384033      Rec_Loss: 0.124227352440      KL_Loss: 0.003337982809
-    Epoch:   160      LossNode: 0.129248499870      Rec_Loss: 0.126197606325      KL_Loss: 0.003026118036
-    Epoch:   170      LossNode: 0.129425942898      Rec_Loss: 0.125259354711      KL_Loss: 0.003018275602
-    Epoch:   180      LossNode: 0.123666971922      Rec_Loss: 0.118963226676      KL_Loss: 0.003215205623
-    Epoch:   190      LossNode: 0.125927045941      Rec_Loss: 0.123474702239      KL_Loss: 0.002605077345
-    Epoch:   199      LossNode: 0.122792303562      Rec_Loss: 0.119748525321      KL_Loss: 0.002118789591
-2024-11-27 19:32:07.778981: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:479] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
-2024-11-27 19:32:07.788946: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:10575] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
-2024-11-27 19:32:07.788969: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1442] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
-2024-11-27 19:32:08.317590: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+    Epoch:     0      LossNode: 123.647232055664      Rec_Loss: 1.074138998985      KL_Loss: 121.832870483398
+    Epoch:     1      LossNode: 120.874153137207      Rec_Loss: 1.019348144531      KL_Loss: 119.206771850586
+    Epoch:     2      LossNode: 118.433776855469      Rec_Loss: 0.983501315117      KL_Loss: 116.876586914062
+    Epoch:     3      LossNode: 116.249984741211      Rec_Loss: 0.960609316826      KL_Loss: 114.769653320312
+    Epoch:     5      LossNode: 112.327186584473      Rec_Loss: 0.917713344097      KL_Loss: 110.938995361328
+    Epoch:    10      LossNode: 102.451118469238      Rec_Loss: 0.735949158669      KL_Loss: 101.162673950195
+    Epoch:    15      LossNode: 88.178756713867      Rec_Loss: 0.711393415928      KL_Loss: 86.507415771484
+    Epoch:    20      LossNode: 60.749382019043      Rec_Loss: 0.675867319107      KL_Loss: 58.135147094727
+    Epoch:    25      LossNode: 31.823333740234      Rec_Loss: 0.608784139156      KL_Loss: 27.526006698608
+    Epoch:    30      LossNode: 12.392652511597      Rec_Loss: 0.540971636772      KL_Loss: 10.822260856628
+    Epoch:    35      LossNode: 5.196170330048      Rec_Loss: 0.515065968037      KL_Loss: 4.243607521057
+    Epoch:    40      LossNode: 2.404813289642      Rec_Loss: 0.494778156281      KL_Loss: 1.727937459946
+    Epoch:    45      LossNode: 1.474111795425      Rec_Loss: 0.474046379328      KL_Loss: 0.887647092342
+    Epoch:    49      LossNode: 1.121238112450      Rec_Loss: 0.458627134562      KL_Loss: 0.590684533119
 
-Total GD training time: 5 hours 23 mins 51 secs
-Training Complete, saving model to folder: ./runs/241114-152228-Test/
-Test MSE: 0.10903177
-3
-5
-4
+Total GD training time: 1 hours 6 mins 0 secs
+Training Complete, saving model to folder: ./runs/241128-154140/
+Test MSE: 0.45767930
 1
+4
+5
+3
 2

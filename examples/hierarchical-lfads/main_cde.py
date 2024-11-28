@@ -40,7 +40,7 @@ SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
-latent_size = 16
+latent_size = 64
 factor_size = 2
 mlp_hidden_size = 32
 mlp_depth = 4
@@ -54,9 +54,9 @@ nb_channel_vis = 1
 init_lr = 1e-3
 
 ## Training hps
-print_every = 10
-nb_epochs = 200
-batch_size = 7695//4
+print_every = 5
+nb_epochs = 50
+batch_size = 7695//2
 traj_prop_train = 1.0
 subsample_skip = 1
 train_horizon = 500
@@ -66,8 +66,8 @@ train = True
 
 ## Data hps
 data_folder = "./data/new_sleep/" if train else "../../data/new_sleep/"
-run_folder = "./runs/241114-152228-Test/" if train else "./"
-# run_folder = None if train else "./"
+# run_folder = "./runs/241114-152228-Test/" if train else "./"
+run_folder = None if train else "./"
 
 
 #%%
@@ -83,7 +83,7 @@ _ = setup_run_folder(run_folder, os.path.basename(__file__))
 with h5py.File(data_folder+'dataset.h5', "r") as f:
     print("HDF5 Dataset Keys: %s" % f.keys())
     train_data = np.array(f['train_encod_data'])
-    test_data = np.array(f['valid_encod_data'])
+    test_data = np.array(f['train_encod_data'])
 
 # train_data = np.load(data_folder+'data.npy').transpose(0, 2, 1)
 # ## Min Max Normalization of the data
@@ -153,10 +153,17 @@ class NeuralODE(eqx.Module):
         #                                     factor_size,
         #                                     use_bias=True,
         #                                     key=keys[3])
-        self.decoder_recons = eqx.nn.Linear(latent_size, 
-                                            data_size, 
-                                            use_bias=True, 
-                                            key=keys[2])
+        # self.decoder_recons = eqx.nn.Linear(latent_size, 
+        #                                     data_size, 
+        #                                     use_bias=True, 
+        #                                     key=keys[2])
+        self.decoder_recons = eqx.nn.MLP(latent_size, 
+                                    data_size, 
+                                    mlp_hidden_size, 
+                                    mlp_depth, 
+                                    use_bias=True, 
+                                    activation=jax.nn.softplus,
+                                    key=keys[0])
 
     def __call__(self, xs, t_eval, key):
         """ Forward call of the Neural ODE """
@@ -417,17 +424,19 @@ np.savez(run_folder+"latents.npz", latents=X_lats)
 import umap
 import pandas as pd
 
-# ## Load the latels for the plotting from the 'anotations.csv'
-# labels = []
-# with open(data_folder+'annotations.csv', 'r') as f:
-#     for line in f:
-#         if 'subject' not in line:
-#             human = int(line.split(',')[0].strip())
-#             sleep_phase = int(line.split(',')[1].strip())
-#             labels.append((human, sleep_phase))
+## MY UMAP approach
+## Load the latels for the plotting from the 'anotations.csv'
+labels = []
+with open(data_folder+'train_annotations.csv', 'r') as f:
+    for line in f:
+        if 'subject' not in line:
+            human = int(line.split(',')[0].strip())
+            sleep_phase = int(line.split(',')[1].strip())
+            labels.append((human, sleep_phase))
+######
 
 ## Davide's approach to reading CSV
-annotations = pd.read_csv(data_folder+'valid_annotations.csv')
+annotations = pd.read_csv(data_folder+'train_annotations.csv')
 event_id = {'Sleep stage W': 1,
             'Sleep stage 1': 2,
             'Sleep stage 2': 3,
@@ -436,36 +445,40 @@ event_id = {'Sleep stage W': 1,
 
 # invert the dictionary
 event_id_inv = {v: k for k, v in event_id.items()}
-annotations = annotations[annotations['subject'] == 1]
-indices = annotations.index.to_list()
-
+# annotations = annotations[annotations['subject'] == 1]
+# indices = annotations.index.to_list()
+###### Davide's Umap approach
 
 #%%
 
-### My original way of plotting things
-# reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
+# ## My original way of plotting things
+# reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=125, metric='euclidean')
 # X_lats_umap = reducer.fit_transform(X_lats, min_dist=0.1)
+
+# print("X lats shape:", X_lats.shape)
 
 # colors = np.array(labels)
 # fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 # # sbplot(X_lats_umap[:,0], X_lats_umap[:,1], "o", x_label='UMAP1', y_label='UMAP2', title='UMAP of Latent Space', ax=ax)
 
 # ## Plot using scatter and collors
-# ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,0], cmap='tab20', alpha=0.5)
+# ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,1], cmap='tab20', alpha=0.5)
 
 
 
 
 ### The Davide way of plotting things
 # %matplotlib inline
-umap = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
-embeddings = umap.fit_transform(X_lats[indices, :]) # TEST
+reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=55, metric='euclidean')
+embeddings = reducer.fit_transform(X_lats[:, :]) # TEST
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 unique_conditions = annotations['condition'].unique()
+uniques_conditions = [1, 2, 3,5,4]
+
 for condition in unique_conditions:
     print(condition)
-    condition_mask = annotations['condition'] == condition#
+    condition_mask = annotations['condition'] == condition
     # Plot a scatter plot giving a distinct color to each condition from event_id_inv
     plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=event_id_inv[condition], alpha=0.5)
     #plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=condition)
