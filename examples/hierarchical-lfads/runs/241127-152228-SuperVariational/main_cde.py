@@ -222,7 +222,7 @@ class NeuralODE(eqx.Module):
         # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
         x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
+        return x_recons, zs[:,:,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
         # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)        ## TODO collect the actual factor
 
 
@@ -377,6 +377,7 @@ def test_model(model, batch):
 
 X, t = sample_batch_portion(*(test_data[0, :, ...], t_eval), traj_prop=1.0)
 X_hat, X_lats, Z0s = test_model(model, (X, t))
+np.save(run_folder+"latents_full.npy", X_lats)
 
 print(f"Test MSE: {jnp.mean((X-X_hat)**2):.8f}")
 

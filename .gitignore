@@ -58,3 +58,5 @@ examples/hierarchical-lfads/data/sleep_data.npy
 !examples/hierarchical-lfads/runs/241115-210451-Sleep
 !examples/hierarchical-lfads/runs/241116-191238-GoodCDE
 !examples/hierarchical-lfads/runs/241127-152228-SuperVariational
+examples/hierarchical-lfads/runs/241127-152228-SuperVariational/train_latents_full.npy
+examples/hierarchical-lfads/runs/241127-152228-SuperVariational/valid_latents_full.npy

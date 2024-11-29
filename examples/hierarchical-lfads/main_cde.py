@@ -55,7 +55,7 @@ init_lr = 1e-3
 
 ## Training hps
 print_every = 5
-nb_epochs = 50
+nb_epochs = 50*10
 batch_size = 7695//2
 traj_prop_train = 1.0
 subsample_skip = 1
