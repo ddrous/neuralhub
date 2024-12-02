@@ -41,7 +41,7 @@ main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
 latent_size = 64
-factor_size = 2
+factor_size = 8
 mlp_hidden_size = 32
 mlp_depth = 4
 data_size = 2
@@ -55,17 +55,18 @@ init_lr = 1e-3
 
 ## Training hps
 print_every = 5
-nb_epochs = 50*10
-batch_size = 7695//2
+nb_epochs = 200
+batch_size = 7695//4
 traj_prop_train = 1.0
 subsample_skip = 1
-train_horizon = 500
+start_horizon = 26
+train_horizon = 201
 variational = True
 
 train = True
 
 ## Data hps
-data_folder = "./data/new_sleep/" if train else "../../data/new_sleep/"
+data_folder = "./data/linguistic/" if train else "../../data/linguistic/"
 # run_folder = "./runs/241114-152228-Test/" if train else "./"
 run_folder = None if train else "./"
 
@@ -92,26 +93,25 @@ with h5py.File(data_folder+'dataset.h5', "r") as f:
 
 ## Mean and standard deviation of the initial condition
 
-data = train_data[None, :, :train_horizon:, :]
+data = train_data[None, :, start_horizon:train_horizon:, :]
 T_horizon = 1.
 t_eval = np.linspace(0, T_horizon, data.shape[2])
 
 if nb_test_trajs != -1:
-    test_data = test_data[None, :nb_test_trajs, :train_horizon:, :]
+    test_data = test_data[None, :nb_test_trajs, start_horizon:train_horizon:, :]
 else:
-    test_data = test_data[None, :, :train_horizon:, :]
+    test_data = test_data[None, :, start_horizon:train_horizon:, :]
 
 if subsample_skip != -1:
-    data = data[:, :, :train_horizon:subsample_skip, :]
+    data = data[:, :, ::subsample_skip, :]
     t_eval = t_eval[::subsample_skip]
-    test_data = test_data[:, :, :train_horizon:subsample_skip, :]
+    test_data = test_data[:, :, ::subsample_skip, :]
 
 print("train data shape:", data.shape)
 print("test data shape:", test_data.shape)
 
 
 # %%
-
 
 class NeuralODE(eqx.Module):
     data_size: int
@@ -123,8 +123,7 @@ class NeuralODE(eqx.Module):
     encoder: eqx.Module
     generator: eqx.Module
     decoder_recons: eqx.Module
-    # decoder_factor: eqx.Module
-
+    decoder_factor: eqx.Module
 
     def __init__(self, data_size, latent_size, factor_size, variational, mlp_hidden_size, mlp_depth, key=None):
         self.data_size = data_size
@@ -149,21 +148,21 @@ class NeuralODE(eqx.Module):
                                     activation=jax.nn.softplus, 
                                     key=keys[1])
         # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
-        # self.decoder_factor = eqx.nn.Linear(latent_size,
-        #                                     factor_size,
-        #                                     use_bias=True,
-        #                                     key=keys[3])
-        # self.decoder_recons = eqx.nn.Linear(latent_size, 
-        #                                     data_size, 
-        #                                     use_bias=True, 
-        #                                     key=keys[2])
-        self.decoder_recons = eqx.nn.MLP(latent_size, 
-                                    data_size, 
-                                    mlp_hidden_size, 
-                                    mlp_depth, 
-                                    use_bias=True, 
-                                    activation=jax.nn.softplus,
-                                    key=keys[0])
+        self.decoder_factor = eqx.nn.Linear(latent_size,
+                                            factor_size,
+                                            use_bias=True,
+                                            key=keys[3])
+        self.decoder_recons = eqx.nn.Linear(factor_size, 
+                                            data_size, 
+                                            use_bias=True, 
+                                            key=keys[2])
+        # self.decoder_recons = eqx.nn.MLP(latent_size, 
+        #                             data_size, 
+        #                             mlp_hidden_size, 
+        #                             mlp_depth, 
+        #                             use_bias=True, 
+        #                             activation=jax.nn.softplus,
+        #                             key=keys[0])
 
     def __call__(self, xs, t_eval, key):
         """ Forward call of the Neural ODE """
@@ -226,11 +225,10 @@ class NeuralODE(eqx.Module):
 
         zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
 
-        # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
-        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
+        x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
+        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(x_factors)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
-        # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)        ## TODO collect the actual factor
+        return x_recons, x_factors[:,-1,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
 
 
 

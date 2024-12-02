@@ -123,8 +123,17 @@ def loss(model, xs_i, label_i):
 
     print(pred.shape, label_i.shape)
 
+    ## Calculate the weigthing of each class
+    class_weights = jnp.sum(label_i, axis=0, keepdims=True) / label_i.shape[0]
+    class_weights = 1 / class_weights
+    print("Class weights:", class_weights.shape, jnp.sum(label_i * jnp.log(pred), axis=(-1,)).shape)
+
+    ## Categorical cross-entropy with class weights
+    bxe = -jnp.sum(label_i * jnp.log(pred), axis=(-1,), keepdims=True)
+    bxe = jnp.mean(bxe * class_weights)
+
     # Categorical cross-entropy
-    bxe = jnp.mean(-jnp.sum(label_i * jnp.log(pred), axis=(-1,)))
+    # bxe = jnp.mean(-jnp.sum(label_i * jnp.log(pred), axis=(-1,)))
     acc = jnp.mean(jnp.argmax(pred, axis=-1) == jnp.argmax(label_i, axis=-1))
 
     return bxe, acc
@@ -155,7 +164,7 @@ for step, data_i in zip(range(steps), dataloader((ys, labels), batch_size, key=l
         )
 
 #%%
-ys, labels, _, _ = get_data(split="train", task="condition")
+ys, labels, _, _ = get_data(split="test", task="condition")
 bxe, acc = loss(model, ys, labels)
 print(f"Test loss: {bxe}, Test Accuracy: {acc}")
 
@@ -187,6 +196,9 @@ print(jnp.mean(pred == true))
 print("==== Per-class accuracy ====")
 print(per_class_acc)
 
+from sklearn import metrics
+print("==== Classification Report ====")
+print(metrics.classification_report(true, pred))
 
 
 # %%
