@@ -83,7 +83,7 @@ _ = setup_run_folder(run_folder, os.path.basename(__file__))
 with h5py.File(data_folder+'dataset.h5', "r") as f:
     print("HDF5 Dataset Keys: %s" % f.keys())
     train_data = np.array(f['train_encod_data'])
-    test_data = np.array(f['train_encod_data'])
+    test_data = np.array(f['valid_encod_data'])
 
 # train_data = np.load(data_folder+'data.npy').transpose(0, 2, 1)
 # ## Min Max Normalization of the data
@@ -406,7 +406,8 @@ plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
 
 # ## Save the results to a npz file
 # np.savez(run_folder+"predictions_test.npz", trajs=X, recons=X_hat, latents=X_lats)
-np.savez(run_folder+"latents.npz", latents=X_lats)
+np.savez(run_folder+"latents_test.npz", latents=X_lats)
+np.savez(run_folder+"recons_test.npz", latents=X_hat)
 
 
 # %%[markdown]

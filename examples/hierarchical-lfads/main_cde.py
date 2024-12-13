@@ -44,7 +44,7 @@ latent_size = 64
 factor_size = 8
 mlp_hidden_size = 32
 mlp_depth = 4
-data_size = 2
+data_size = 32
 
 ## Testing hps
 nb_test_trajs = -1
