@@ -40,11 +40,11 @@ SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 
 ## Model hps
-latent_size = 64
-factor_size = 8
-mlp_hidden_size = 32
+latent_size = 16
+factor_size = 2
+mlp_hidden_size = 32*1
 mlp_depth = 4
-data_size = 32
+data_size = 2
 
 ## Testing hps
 nb_test_trajs = -1
@@ -54,21 +54,20 @@ nb_channel_vis = 1
 init_lr = 1e-3
 
 ## Training hps
-print_every = 5
-nb_epochs = 200
-batch_size = 7695//4
-traj_prop_train = 1.0
+print_every = 10
+nb_epochs = 2
+batch_size = 1
+traj_prop_train = 5.0 / 84900
 subsample_skip = 1
-start_horizon = 26
-train_horizon = 201
-variational = True
+train_horizon = 8490000
+variational = False
 
-train = False
+train = True
 
 ## Data hps
-data_folder = "./data/linguistic/" if train else "../../data/linguistic/"
-# run_folder = "./runs/241114-152228-Test/" if train else "./"
-run_folder = None if train else "./"
+data_folder = "./data/continuous_sleep/" if train else "../../data/continuous_sleep/"
+run_folder = "./runs/241114-152228-Test/" if train else "./"
+# run_folder = None if train else "./"
 
 
 #%%
@@ -81,37 +80,37 @@ _ = setup_run_folder(run_folder, os.path.basename(__file__))
 
 
 #%%
-with h5py.File(data_folder+'dataset.h5', "r") as f:
-    print("HDF5 Dataset Keys: %s" % f.keys())
-    train_data = np.array(f['train_encod_data'])
-    test_data = np.array(f['train_encod_data'])
 
-# train_data = np.load(data_folder+'data.npy').transpose(0, 2, 1)
-# ## Min Max Normalization of the data
-# train_data = (train_data - np.min(train_data, keepdims=True)) / (np.max(train_data, keepdims=True) - np.min(train_data, keepdims=True))
-# test_data = train_data
+train_data = np.load(data_folder+"data.npy").T[None, ...]
+print("Data shape:", train_data.shape)
+test_data = train_data
 
-## Mean and standard deviation of the initial condition
-
-data = train_data[None, :, start_horizon:train_horizon:, :]
+data = train_data[None, :, :train_horizon:, :]
 T_horizon = 1.
 t_eval = np.linspace(0, T_horizon, data.shape[2])
 
 if nb_test_trajs != -1:
-    test_data = test_data[None, :nb_test_trajs, start_horizon:train_horizon:, :]
+    test_data = test_data[None, :nb_test_trajs, :train_horizon:, :]
 else:
-    test_data = test_data[None, :, start_horizon:train_horizon:, :]
+    test_data = test_data[None, :, :train_horizon:, :]
 
 if subsample_skip != -1:
-    data = data[:, :, ::subsample_skip, :]
+    data = data[:, :, :train_horizon:subsample_skip, :]
     t_eval = t_eval[::subsample_skip]
-    test_data = test_data[:, :, ::subsample_skip, :]
+    test_data = test_data[:, :, :train_horizon:subsample_skip, :]
 
 print("train data shape:", data.shape)
 print("test data shape:", test_data.shape)
 
 
+## Plot the two channels of the data
+plot_skip = 10000
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+sbplot(t_eval[::plot_skip], data[0, 0, ::plot_skip, 0], "-", x_label='Time', y_label='y', label='Channel 1', title='Single Patient Trajectory', ax=ax, alpha=0.5)
+sbplot(t_eval[::plot_skip], data[0, 0, ::plot_skip, 1], "-.", x_label='Time', y_label='y', label='Channel 2', ax=ax, alpha=0.5)
+
 # %%
+
 
 class NeuralODE(eqx.Module):
     data_size: int
@@ -123,7 +122,8 @@ class NeuralODE(eqx.Module):
     encoder: eqx.Module
     generator: eqx.Module
     decoder_recons: eqx.Module
-    decoder_factor: eqx.Module
+    # decoder_factor: eqx.Module
+
 
     def __init__(self, data_size, latent_size, factor_size, variational, mlp_hidden_size, mlp_depth, key=None):
         self.data_size = data_size
@@ -148,21 +148,14 @@ class NeuralODE(eqx.Module):
                                     activation=jax.nn.softplus, 
                                     key=keys[1])
         # self.generator = Generator(1, mlp_hidden_size, data_size+1, key=keys[1])
-        self.decoder_factor = eqx.nn.Linear(latent_size,
-                                            factor_size,
-                                            use_bias=True,
-                                            key=keys[3])
-        self.decoder_recons = eqx.nn.Linear(factor_size, 
+        # self.decoder_factor = eqx.nn.Linear(latent_size,
+        #                                     factor_size,
+        #                                     use_bias=True,
+        #                                     key=keys[3])
+        self.decoder_recons = eqx.nn.Linear(latent_size, 
                                             data_size, 
                                             use_bias=True, 
                                             key=keys[2])
-        # self.decoder_recons = eqx.nn.MLP(latent_size, 
-        #                             data_size, 
-        #                             mlp_hidden_size, 
-        #                             mlp_depth, 
-        #                             use_bias=True, 
-        #                             activation=jax.nn.softplus,
-        #                             key=keys[0])
 
     def __call__(self, xs, t_eval, key):
         """ Forward call of the Neural ODE """
@@ -204,7 +197,7 @@ class NeuralODE(eqx.Module):
                     stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
                     saveat=diffrax.SaveAt(ts=t_eval),
                     # adjoint=diffrax.RecursiveCheckpointAdjoint(),
-                    max_steps=4096*5
+                    max_steps=4096*15
                 )
 
             return sol.ys
@@ -225,12 +218,11 @@ class NeuralODE(eqx.Module):
 
         zs = eqx.filter_vmap(integrate)(z0s_mu, z0s_logvar, keys, xs)        ## Shape: (batch, T, latent_size)
 
-        x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
-        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(x_factors)        ## Shape: (batch, T, data_size)
+        # x_factors = eqx.filter_vmap(eqx.filter_vmap(self.decoder_factor))(zs)        ## Shape: (batch, T, factor_size)
+        x_recons = eqx.filter_vmap(eqx.filter_vmap(self.decoder_recons))(zs)        ## Shape: (batch, T, data_size)
 
-        return x_recons, zs[:,:,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
-        return x_recons, x_factors[:,:,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
-        # return x_recons, x_recons[:,:,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
+        return x_recons, zs[:,-1,:], (z0s_mu, z0s_logvar)           ## TODO collect the actual factor
+        # return x_recons, z0s_mu[:,:], (z0s_mu, z0s_logvar)        ## TODO collect the actual factor
 
 
 
@@ -255,10 +247,14 @@ print(f"Number of learnable parameters in the reconstructing decoder: {count_par
 
 def loss_fn(model, batch, key):
     X, t = batch
+    print("Data shapes in loss_fn:", X.shape, t.shape)
     X_recons, _, (latents_mu, latents_logvars) = model(X, t, key)
 
     ## MSE loss
-    rec_loss = jnp.mean((X-X_recons)**2, axis=(1,2))
+    # rec_loss = jnp.mean((X-X_recons)**2, axis=(1,2))
+
+    ## Only use the final state for the loss
+    rec_loss = jnp.mean((X[:,-1,:]-X_recons[:, -1, :])**2, axis=1)
 
     ### Another reconstruction loss
     # BCE_loss = jnp.sum(-xs*jnp.log(recon_xs) - (1-xs)*jnp.log(1-recon_xs), axis=(1,2,3))
@@ -384,6 +380,7 @@ def test_model(model, batch):
 
 X, t = sample_batch_portion(*(test_data[0, :, ...], t_eval), traj_prop=1.0)
 X_hat, X_lats, Z0s = test_model(model, (X, t))
+np.save(run_folder+"latents_full.npy", X_lats)
 
 print(f"Test MSE: {jnp.mean((X-X_hat)**2):.8f}")
 
@@ -412,7 +409,8 @@ plt.savefig(run_folder+"results_lfads.png", dpi=100, bbox_inches='tight')
 
 # ## Save the results to a npz file
 # np.savez(run_folder+"predictions_test.npz", trajs=X, recons=X_hat, latents=X_lats)
-np.savez(run_folder+"latents_train.npz", latents=X_lats)
+np.savez(run_folder+"latents_test.npz", latents=X_lats)
+np.savez(run_folder+"recons_test.npz", latents=X_hat)
 
 
 # %%[markdown]
@@ -424,64 +422,59 @@ np.savez(run_folder+"latents_train.npz", latents=X_lats)
 import umap
 import pandas as pd
 
-# ## MY UMAP approach
 # ## Load the latels for the plotting from the 'anotations.csv'
 # labels = []
-# with open(data_folder+'train_annotations.csv', 'r') as f:
+# with open(data_folder+'annotations.csv', 'r') as f:
 #     for line in f:
 #         if 'subject' not in line:
 #             human = int(line.split(',')[0].strip())
 #             sleep_phase = int(line.split(',')[1].strip())
 #             labels.append((human, sleep_phase))
-# ######
 
 ## Davide's approach to reading CSV
 annotations = pd.read_csv(data_folder+'train_annotations.csv')
-event_id = {'CONT': 1,
-            'FUNC': 2,}
-
-print(annotations.head())
-plot_label = 'wtype'
+event_id = {'Sleep stage W': 1,
+            'Sleep stage 1': 2,
+            'Sleep stage 2': 3,
+            'Sleep stage 3/4': 4,
+            'Sleep stage R': 5}
 
 # invert the dictionary
 event_id_inv = {v: k for k, v in event_id.items()}
 # annotations = annotations[annotations['subject'] == 1]
 # indices = annotations.index.to_list()
-###### Davide's Umap approach
+
 
 #%%
+# %matplotlib qt
 
-# ## My original way of plotting things
-# reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=125, metric='euclidean')
+### My original way of plotting things
+# reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
 # X_lats_umap = reducer.fit_transform(X_lats, min_dist=0.1)
-
-# print("X lats shape:", X_lats.shape)
 
 # colors = np.array(labels)
 # fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 # # sbplot(X_lats_umap[:,0], X_lats_umap[:,1], "o", x_label='UMAP1', y_label='UMAP2', title='UMAP of Latent Space', ax=ax)
 
 # ## Plot using scatter and collors
-# ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,1], cmap='tab20', alpha=0.5)
+# ax.scatter(X_lats_umap[:,0], X_lats_umap[:,1], c=colors[:,0], cmap='tab20', alpha=0.5)
 
 
 
 
 ### The Davide way of plotting things
 # %matplotlib inline
-reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=55, metric='euclidean')
+reducer = umap.UMAP(n_components=2, min_dist=0., n_neighbors=15, metric='euclidean')
+# embeddings = reducer.fit_transform(X_lats[indices, :]) # TEST
 embeddings = reducer.fit_transform(X_lats[:, :]) # TEST
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-unique_conditions = annotations[plot_label].unique()
-
-print("Event ID Inv:", event_id_inv)
-
+unique_conditions = annotations['condition'].unique()
 for condition in unique_conditions:
     print(condition)
-    condition_mask = annotations[plot_label] == condition
+    condition_mask = annotations['condition'] == condition
     # Plot a scatter plot giving a distinct color to each condition from event_id_inv
-    plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=event_id[condition], alpha=0.5)
+    plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=event_id_inv[condition], alpha=0.5)
     #plt.scatter(embeddings[condition_mask, 0], embeddings[condition_mask, 1], label=condition)
 plt.legend()
 plt.xlabel('UMAP 1')
@@ -492,5 +485,3 @@ plt.ylabel('UMAP 2')
 
 plt.draw();
 plt.savefig(run_folder+"umap_latents.png", dpi=100, bbox_inches='tight')
-
-# %%
