@@ -63,3 +63,6 @@ examples/hierarchical-lfads/runs/241127-152228-SuperVariational/valid_latents_fu
 
 !examples/hierarchical-lfads/runs/241213-131334-Linguistic
 !examples/hierarchical-lfads/runs/241213-131334-Linguistic/model_lfads.eqx
+
+examples/time-series/runs/*
+examples/time-series/data/*
