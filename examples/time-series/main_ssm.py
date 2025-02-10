@@ -7,16 +7,20 @@
 # - The loss function compares the latent space'd decoded output to the ground thruth
 
 ## ToDo:
-# - [x] Add a __reconstuction__ head to the model
-# - [x] Remove the B x_t term from the model, see if we keep the same performance
+# - [] Add a __reconstuction__ head to the model
+# - [x] Remove the B x_t term from the model, see if we keep the same performance. We don't !
+# - [] Why is my cros-entropy so bad, and optax so good ?
+# - [] Try the epilepsy dataset
+# - [] Try the Minist control dataset https://srush.github.io/annotated-s4/#experiments-mnist
+# - [] Try the Neural CDE irregular dataset
 
 #%%
 import jax
 
 print("Available devices:", jax.devices())
 
-from jax import config
-config.update("jax_debug_nans", True)
+# from jax import config
+# config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 
@@ -27,7 +31,7 @@ import equinox as eqx
 
 # import matplotlib.pyplot as plt
 from neuralhub import *
-from loader import TrendsDataset
+from loaders import TrendsDataset
 from selfmod import NumpyLoader, setup_run_folder, torch
 
 import optax
@@ -36,6 +40,8 @@ import time
 ## Set seaborn style to talk
 import seaborn as sb
 sb.set_context("poster")
+
+# import wandb
 
 #%%
 
@@ -64,6 +70,20 @@ data_folder = "./data/trends/" if train else "../../data/trends/"
 # run_folder = "./runs/250208-184005-Test/" if train else "./"
 run_folder = None if train else "./"
 
+# # Initializing a Weights & Biases Run
+# wandb.init(
+#     project="weight-space-models",
+#     # entity="jax-series",
+#     job_type="main-ssm",
+#     config={"mlp_hidden_size": mlp_hidden_size,
+#             "mlp_depth": mlp_depth,
+#             "data_size": data_size,
+#             "init_lr": init_lr,
+#             "print_every": print_every,
+#             "nb_epochs": nb_epochs,
+#             "batch_size": batch_size,
+#             "traj_prop_train": traj_prop_train}
+# )
 
 #%%
 ### Create and setup the run folder
@@ -140,11 +160,8 @@ class Ses2Seq(eqx.Module):
         self.theta = flatten_pytree(root_params)[0]
 
         latent_size = root.network_size
-        self.A = jax.random.normal(keys[0], (latent_size, latent_size)) * 0.
-        ## Fill the diagonal with 1s
-        self.A = jnp.eye(latent_size) + self.A
-
-        self.B = jax.random.normal(keys[2], (latent_size, data_size)) * 0.
+        self.A = jnp.eye(latent_size, latent_size)
+        self.B = jnp.zeros((latent_size, data_size))
 
     def __call__(self, xs, ts):
         """ xs: (batch, time, data_size)
@@ -156,6 +173,7 @@ class Ses2Seq(eqx.Module):
             ## 1. Fine-tune the weights (the latent initilisation)
             def f(thet, x):
                 thet_next = self.A@thet + self.B@x
+                # thet_next = self.A@thet
                 return thet_next, x
             thet_final, _ = jax.lax.scan(f, self.theta, xs_)
 
@@ -251,6 +269,15 @@ if train:
             loss_sum += loss
             nb_batches += 1
 
+            # # Log Metrics to Weights & Biases
+            # wandb.log({
+            #     "Train Loss": loss,
+            #     "Train Accuracy": aux,
+            #     "A matrix": model.A,
+            #     "B matrix": model.B,
+            #     "Theta": model.theta,
+            # }, step=epoch)
+
         loss_epoch = loss_sum/nb_batches
         losses.append(loss_epoch)
 
@@ -296,3 +323,7 @@ axs[1].hist(model.theta, bins=100, label="After Training")
 axs[1].hist(untrained_model.theta, bins=100, alpha=0.5, label="Before Training", color='r')
 axs[1].set_title(r"Histogram of $\theta$ values")
 plt.legend();
+
+
+# # Close your wandb run
+# wandb.finish()

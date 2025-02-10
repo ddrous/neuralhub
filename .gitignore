@@ -36,6 +36,7 @@ graphpint/tests/data/*
 
 ## Don't save equinox models
 *.eqx
+*.log
 
 ## Ignore the example data
 examples/data/
@@ -66,3 +67,4 @@ examples/hierarchical-lfads/runs/241127-152228-SuperVariational/valid_latents_fu
 
 examples/time-series/runs/*
 examples/time-series/data/*
+examples/time-series/wandb/*
