@@ -41,7 +41,7 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -54,16 +54,16 @@ mlp_depth = 2
 init_lr = 1e-5
 
 ## Training hps
-print_every = 1000
-nb_epochs = 25000
-batch_size = 256
-grounding_length = 30      ## The length of the grounding pixel for the autoregressive digit generation
-full_matrix_A = True      ## Whether to use a full matrix A or a diagonal one
+print_every = 10
+nb_epochs = 1000*3
+batch_size = 256*4
+grounding_length = 100       ## The length of the grounding pixel for the autoregressive digit generation
+full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 classification = False       ## True for classification, False for reconstruction
-mini_res_mnist = 2
-nb_recons_loss_steps = 2
-use_mse_loss = False
-run_mnist = False
+mini_res_mnist = 4
+nb_recons_loss_steps = 4
+use_mse_loss = True
+run_mnist = True
 print("==== Classification Task ====") if classification else print("==== Reconstruction Task ====")
 
 train = True
@@ -115,10 +115,10 @@ if run_mnist:
 
         ## Return NumpyLoaders
         trainloader = NumpyLoader(
-            train, batch_size=bsz, shuffle=True
+            train, batch_size=bsz, shuffle=True, num_workers=24
         )
         testloader = NumpyLoader(
-            test, batch_size=bsz, shuffle=False
+            test, batch_size=bsz, shuffle=False, num_workers=24
         )
 
         return trainloader, testloader, N_CLASSES, SEQ_LENGTH, IN_DIM
@@ -173,6 +173,7 @@ class Ses2Seq(eqx.Module):
     A: jnp.ndarray
     B: jnp.ndarray
     theta: jnp.ndarray
+    # alpha: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -208,6 +209,7 @@ class Ses2Seq(eqx.Module):
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
+        # self.alpha = jnp.array([0.0])
 
     def __call__(self, xs):
         """ xs: (batch, time, data_size)
@@ -243,7 +245,19 @@ class Ses2Seq(eqx.Module):
                 else:
                     x_next_mean = x_next
 
-                return (thet_next, x_next_mean, t_curr), (x_next, )
+                # if self.inference_mode:
+                #     x_ret = x_next
+                # else:
+                #     # alpha = 0.5
+                #     alpha = jnp.clip(self.alpha, 0.0, 1.0)
+                #     # x_ret = x_next
+                #     x_ret = (1-alpha)*x_next_mean + alpha*x_true
+                # if not use_mse_loss:
+                #     x_ret = jnp.concatenate([x_ret, x_next[self.data_size:]], axis=-1)
+
+                x_ret = x_next
+
+                return (thet_next, x_next_mean, t_curr), (x_ret, )
 
             ## Call the JAX scan
             ts_ = jnp.linspace(0, 1, xs_.shape[0])[:, None]
@@ -375,6 +389,8 @@ if train:
                 else:
                     print(f"    Epoch: {epoch:-5d}      NLL Loss: {loss_epoch:.6f}", flush=True)
 
+            # print("     Current teacher-forcing mixing factor alpha:", model.alpha)
+
             eqx.tree_serialise_leaves(run_folder+"model.eqx", model)
             eqx.tree_serialise_leaves(checkpoints_folder+f"model_{epoch}.eqx", model)
 
@@ -408,6 +424,10 @@ plt.savefig(run_folder+"loss.png", dpi=100, bbox_inches='tight')
 
 # %%
 
+## Print the value of alpha
+# print("Alpha before training: (no teacher forcing)", 0.)
+# print("Alpha after training:", model.alpha)
+
 ## Let's visualise the distribution of values along the main diagonal of A and theta
 fig, axs = plt.subplots(1, 2, figsize=(20, 10))
 if full_matrix_A:
@@ -421,7 +441,16 @@ axs[1].hist(model.theta, bins=100, label="After Training")
 axs[1].hist(untrained_model.theta, bins=100, alpha=0.5, label="Before Training", color='r')
 axs[1].set_title(r"Histogram of $\theta$ values")
 plt.legend();
+plt.draw();
+plt.savefig(run_folder+"A_theta_histograms.png", dpi=100, bbox_inches='tight')
 
+## PLot all values of B in a lineplot (all dimensions)
+fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+ax.plot(model.B, label="Values of B")
+ax.set_title("Values of B")
+ax.set_xlabel("Dimension")
+plt.draw();
+plt.savefig(run_folder+"B_values.png", dpi=100, bbox_inches='tight')
 
 if full_matrix_A:
     ## Print the untrained and trained matrices A as imshows with same range
@@ -438,6 +467,8 @@ if full_matrix_A:
     img = axs[1].imshow(model.A, cmap='viridis', vmin=min_val, vmax=max_val)
     axs[1].set_title("Trained A")
     plt.colorbar(img, ax=axs[1], shrink=0.7)
+    plt.draw();
+    plt.savefig(run_folder+"A_matrices.png", dpi=100, bbox_inches='tight')
 
 
 
@@ -508,6 +539,8 @@ if not classification:
             axs[i, 2*j+1].axis('off')
 
     plt.suptitle(f"Reconstruction using {grounding_length} initial pixels", fontsize=65, y=0.97)
+    plt.draw();
+    plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
 
 
 
