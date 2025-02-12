@@ -9,6 +9,7 @@
 ## ToDo:
 # - [] Why is my cros-entropy so bad, and optax so good ?
 # - [] Try the Neural CDE irregular dataset
+# - [] Add delta_t in front of the A matrix
 
 #%%
 import jax
@@ -27,7 +28,7 @@ import equinox as eqx
 
 # import matplotlib.pyplot as plt
 from neuralhub import *
-from loaders import create_mnist_classification_dataset, TrendsDataset
+from loaders import TrendsDataset, MNISTDataset
 from selfmod import NumpyLoader, setup_run_folder, torch
 import torchvision
 from torchvision import transforms
@@ -54,23 +55,24 @@ mlp_depth = 2
 init_lr = 1e-5
 
 ## Training hps
-print_every = 10
-nb_epochs = 1000*3
-batch_size = 256*4
-grounding_length = 100       ## The length of the grounding pixel for the autoregressive digit generation
+print_every = 1000
+nb_epochs = 2000*3
+batch_size = 256*1
+grounding_length = 35       ## The length of the grounding pixel for the autoregressive digit generation
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 classification = False       ## True for classification, False for reconstruction
-mini_res_mnist = 4
-nb_recons_loss_steps = 4
-use_mse_loss = True
-run_mnist = True
+mini_res_mnist = 1
+traj_train_prop = 1.0       ## Proportion of steps to sample to train each time series
+nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
+use_mse_loss = False
+run_mnist = False
 print("==== Classification Task ====") if classification else print("==== Reconstruction Task ====")
 
 train = True
 data_folder = "./data/" if train else "../../data/"
 
-# run_folder = "./runs/250208-184005-Test/" if train else "./"
-run_folder = None if train else "./"
+run_folder = "./runs/250208-184005-Test/" if train else "./"
+# run_folder = None if train else "./"
 
 #%%
 ### Create and setup the run folder
@@ -84,55 +86,31 @@ _, checkpoints_folder, _ = setup_run_folder(run_folder, os.path.basename(__file_
 #%%
 
 if run_mnist:
-    print(" #### MNIST ####")
     # ### MNIST Classification (From Sacha Rush's Annotated S4)
-    # **Task**: Predict MNIST class given sequence model over pixels (784 pixels => 10 classes).
-    def create_mnist_classification_dataset(bsz=128, mini_res=4):
-        print("[*] Generating MNIST Dataset...")
-
-        # Constants
-        SEQ_LENGTH, N_CLASSES, IN_DIM = 784, 10, 1
-        
-        if mini_res != 1:
-            SEQ_LENGTH = (28//mini_res)**2
-
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(mean=0.5, std=0.5),
-                transforms.Lambda(lambda x: x[:, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
-                # transforms.Lambda(lambda x: x.view(IN_DIM, SEQ_LENGTH).t()),
-                transforms.Lambda(lambda x: x.reshape(IN_DIM, SEQ_LENGTH).t()),
-            ]
-        )
-
-        train = torchvision.datasets.MNIST(
-            data_folder, train=True, download=True, transform=tf
-        )
-        test = torchvision.datasets.MNIST(
-            data_folder, train=False, download=True, transform=tf
-        )
-
-        ## Return NumpyLoaders
-        trainloader = NumpyLoader(
-            train, batch_size=bsz, shuffle=True, num_workers=24
-        )
-        testloader = NumpyLoader(
-            test, batch_size=bsz, shuffle=False, num_workers=24
-        )
-
-        return trainloader, testloader, N_CLASSES, SEQ_LENGTH, IN_DIM
-    trainloader, testloader, nb_classes, seq_length, data_size = create_mnist_classification_dataset(bsz=batch_size, mini_res=mini_res_mnist)
+    print(" #### MNIST Dataset ####")
+    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop), 
+                              batch_size=batch_size, 
+                              shuffle=True, 
+                              num_workers=24)
+    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0),
+                                batch_size=batch_size, 
+                                shuffle=False, 
+                                num_workers=24)
+    nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
+    print("Training sequence length:", seq_length)
 else:
     print(" #### Trends (Synthetic Control) Dataset ####")
     ## ======= below to run the easy Trends dataset instead!
-    train_dataset = TrendsDataset(data_folder+"trends/", skip_steps=1, adaptation=False, traj_prop_min=1.0, use_full_traj=True)
-    trainloader = NumpyLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    testloader = NumpyLoader(train_dataset, batch_size=batch_size, shuffle=False)
-    nb_classes, seq_length, data_size = 6, 60, 1
+    trainloader = NumpyLoader(TrendsDataset(data_folder+"trends/", skip_steps=1, traj_prop=traj_train_prop), 
+                              batch_size=batch_size if batch_size<600 else 600, 
+                              shuffle=True)
+    testloader = NumpyLoader(TrendsDataset(data_folder+"trends/", skip_steps=1, traj_prop=1.0), 
+                             batch_size=batch_size if batch_size<600 else 600,
+                             shuffle=False)
+    nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
 
-batch = next(iter(trainloader))
-images, labels = batch
+batch = next(iter(testloader))
+(images, times), labels = batch
 print("Images shape:", images.shape)
 print("Labels shape:", labels.shape)
 
@@ -207,30 +185,45 @@ class Ses2Seq(eqx.Module):
         self.A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
         self.B = jnp.zeros((latent_size, data_size))
 
+        # self.B = eqx.nn.Linear(1, latent_size*data_size, use_bias=False, key=keys[2])
+        # ## Set the weights of B to zero
+        # self.B = eqx.tree_at(lambda m: m.weight, self.B, jnp.zeros_like(self.B.weight))
+
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
         # self.alpha = jnp.array([0.0])
 
-    def __call__(self, xs):
+    def __call__(self, xs, ts):
         """ xs: (batch, time, data_size)
             theta: (latent_size)
             """
 
-        def forward(xs_):
+        def forward(xs_, ts_):
             ## 1. Fine-tune the latents weights on the sequence we have
             def f(carry, input_signal):
-                thet, x_prev, t_prev = carry
+                thet, x_prev, t_prev, x_prev_prev = carry
                 x_true, t_curr = input_signal
                 delta_t = t_curr - t_prev
 
                 if self.inference_mode:
                     x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
                 else:
-                    x_t = x_true
+                    # x_t = x_true
+                    alpha = 1.0
+                    x_t = alpha*x_true + (1-alpha)*x_prev
 
                 if full_matrix_A:
-                    thet_next = self.A@thet + delta_t*self.B@x_true
+                    # thet_next = delta_t*self.A@thet + delta_t*self.B@x_t
+                    # thet_next = self.A@thet + delta_t*self.B@x_t
                     # thet_next = self.A@thet + self.B@x_t
+
+                    # B = self.B(delta_t).reshape((self.A.shape[0], self.data_size))
+                    # thet_next = self.A@thet + B@x_t
+
+                    thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(1*delta_t + 1e-6)
+                    # thet_next = self.A@thet + self.B@(x_t - x_prev_prev)*delta_t
+                    # thet_next = self.A@thet + self.B@(x_t)/(1*delta_t + 1e-3)
+
                 else:
                     thet_next = self.A*thet + delta_t*self.B@x_t
                     # thet_next = self.A*thet + self.B@x_t
@@ -240,33 +233,23 @@ class Ses2Seq(eqx.Module):
                 params = unflatten_pytree(thet_next, shapes, treedef)
                 root_fun = eqx.combine(params, static)
                 x_next = root_fun(t_curr)
+                # x_next_guess = root_fun(t_curr)
                 if not use_mse_loss:
                     x_next_mean = x_next[:self.data_size]
+                    # x_next_guess_mean = x_next_guess[:self.data_size]
                 else:
                     x_next_mean = x_next
+                    # x_next_guess_mean = x_next_guess
 
-                # if self.inference_mode:
-                #     x_ret = x_next
-                # else:
-                #     # alpha = 0.5
-                #     alpha = jnp.clip(self.alpha, 0.0, 1.0)
-                #     # x_ret = x_next
-                #     x_ret = (1-alpha)*x_next_mean + alpha*x_true
-                # if not use_mse_loss:
-                #     x_ret = jnp.concatenate([x_ret, x_next[self.data_size:]], axis=-1)
-
-                x_ret = x_next
-
-                return (thet_next, x_next_mean, t_curr), (x_ret, )
+                return (thet_next, x_next_mean, t_curr, x_prev), (x_next, )
 
             ## Call the JAX scan
-            ts_ = jnp.linspace(0, 1, xs_.shape[0])[:, None]
-            (_, _, _), (xs_final, ) = jax.lax.scan(f, (self.theta, xs_[0], ts_[0]), (xs_, ts_))
+            _, (xs_final, ) = jax.lax.scan(f, (self.theta, xs_[0], -ts_[0:1], xs_[0]), (xs_, ts_[:, None]))
 
             return xs_final
 
         ## Batched version of the forward pass
-        return eqx.filter_vmap(forward)(xs)
+        return eqx.filter_vmap(forward)(xs, ts)
 
 
 # %%
@@ -288,11 +271,11 @@ print(f"Number of learnable parameters in the model: {count_params(model)/1000:3
 # %%
 
 def loss_fn(model, batch, key):
-    X_true, X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
+    (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
 
     if classification:
         ## Categorical cross-entropy loss with optax
-        X_classes = model(X_true)     ## Y_hat: (batch, time, num_classes) 
+        X_classes = model(X_true, times)     ## Y_hat: (batch, time, num_classes) 
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
         losses_c = optax.softmax_cross_entropy_with_integer_labels(pred_logits, X_labels)
         loss = jnp.mean(losses_c)
@@ -303,7 +286,7 @@ def loss_fn(model, batch, key):
 
     else:
         ## Make a reconstruction loss
-        X_recons = model(X_true)     ## Y_hat: (batch, time, data_size) 
+        X_recons = model(X_true, times)     ## Y_hat: (batch, time, data_size) 
 
         ## Randomly sample 2 points in the sequence to compare
         # indices = jax.random.randint(key, (2,), 0, X_true.shape[1])
@@ -417,7 +400,7 @@ else:
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 ax = sbplot(np.array(losses), x_label='Epoch', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
 # plt.legend()
-ax.set_ylim(np.min(losses)-2e-2, min(np.max(losses)+2e-2, 1.0))
+# ax.set_ylim(np.min(losses)-2e-2, min(np.max(losses)+2e-2, 1.0))
 plt.draw();
 plt.savefig(run_folder+"loss.png", dpi=100, bbox_inches='tight')
 
@@ -445,12 +428,13 @@ plt.draw();
 plt.savefig(run_folder+"A_theta_histograms.png", dpi=100, bbox_inches='tight')
 
 ## PLot all values of B in a lineplot (all dimensions)
-fig, ax = plt.subplots(1, 1, figsize=(10, 4))
-ax.plot(model.B, label="Values of B")
-ax.set_title("Values of B")
-ax.set_xlabel("Dimension")
-plt.draw();
-plt.savefig(run_folder+"B_values.png", dpi=100, bbox_inches='tight')
+if not isinstance(model.B, eqx.nn.Linear):
+    fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+    ax.plot(model.B, label="Values of B")
+    ax.set_title("Values of B")
+    ax.set_xlabel("Dimension")
+    plt.draw();
+    plt.savefig(run_folder+"B_values.png", dpi=100, bbox_inches='tight')
 
 if full_matrix_A:
     ## Print the untrained and trained matrices A as imshows with same range
@@ -477,16 +461,16 @@ if full_matrix_A:
 accs = []
 mses = []
 for i, batch in enumerate(testloader):
-    X_true, X_labels = batch
+    (X_true, times), X_labels = batch
 
     if classification:
-        X_classes = model(X_true)
+        X_classes = model(X_true, times)
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
         acc = jnp.mean(jnp.argmax(pred_logits, axis=-1) == X_labels)
         accs.append(acc)
 
     else:
-        X_recons = model(X_true)
+        X_recons = model(X_true, times)
         if not use_mse_loss:
             X_recons = X_recons[:, :, :data_size]
         mse = jnp.mean((X_recons - X_true)**2)
@@ -505,13 +489,13 @@ else:
 if not classification:
     ## Set inference mode to True
     model = eqx.tree_at(lambda m:m.inference_mode, model, True)
-    visloader = NumpyLoader(trainloader.dataset, batch_size=16, shuffle=True)
+    visloader = NumpyLoader(testloader.dataset, batch_size=16, shuffle=True)
 
     fig, axs = plt.subplots(4, 4*2, figsize=(20*2, 20), sharex=True)
 
     batch = next(iter(visloader))
-    xs_true, labels = batch
-    xs_recons = model(xs_true)
+    (xs_true, times), labels = batch
+    xs_recons = model(xs_true, times)
 
     if not use_mse_loss:
         xs_recons = xs_recons[:, :, :data_size]

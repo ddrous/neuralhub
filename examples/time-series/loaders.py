@@ -5,60 +5,47 @@ class TimeSeriesDataset:
     """
     For any time series dataset, from which the others will inherit
     """
-    def __init__(self, dataset, labels, t_eval, adaptation=False, traj_prop_min=1.0, use_full_traj=True):
+    def __init__(self, dataset, labels, t_eval, traj_prop=1.0):
 
         self.dataset = dataset
-        n_envs, n_trajs_per_env, n_timesteps, n_dimensions = dataset.shape
+        n_envs, n_timesteps, n_dimensions = dataset.shape
         self.t_eval = t_eval
         self.total_envs = n_envs
 
         self.labels = labels
 
-        if traj_prop_min < 0 or traj_prop_min > 1:
+        if traj_prop < 0 or traj_prop > 1:
             raise ValueError("The smallest proportion of the trajectory to use must be between 0 and 1")
-        self.traj_prop_min = traj_prop_min
+        self.traj_prop = traj_prop
+        self.traj_len = int(n_timesteps * traj_prop)
 
         self.num_steps = n_timesteps
         self.data_size = n_dimensions
-        self.num_shots = 1
-        self.use_full_traj = use_full_traj      ## If True, we use the full trajectory, else we only return the initial condition
-        self.adaptation = adaptation
 
     def __getitem__(self, idx):
-        if self.use_full_traj:
-            inputs = self.dataset[idx, 0, :, :]
-            outputs = self.labels[idx]
-        else:
-            inputs = self.dataset[idx, 0, 0, :]
-            outputs = self.dataset[idx, 0, :, :]
-        t_evals = self.t_eval[idx]
+        inputs = self.dataset[idx, :, :]
+        outputs = self.labels[idx]
+        t_eval = self.t_eval
+        traj_len = self.traj_len
 
-        if self.traj_prop_min == 1.0:
+        if self.traj_prop == 1.0:
             ### STRAIGHFORWARD APPROACH ###
-            # return (inputs, t_evals), outputs
-            return inputs, outputs
+            return (inputs, t_eval), outputs
         else:
             ### SAMPLING APPROACH ###
-            ## Sample a start and end time step for the task, and interpolate to produce new timesteps
-            ### The minimum distance between the start and finish is min_len
-            traj_len = t_evals.shape[0]
-            new_traj_len = traj_len ## We always want traj_len samples
-            min_len = int(traj_len * self.traj_prop_min)
-            start_idx = np.random.randint(0, traj_len - min_len)
-            end_idx = np.random.randint(start_idx + min_len, traj_len)
+            ## Select a random trajectory of length t-2
+            # start_idx = np.random.randint(0, self.num_steps - traj_len)
+            # end_idx = start_idx + traj_len
+            # ts = t_eval[start_idx:end_idx]
+            # trajs = inputs[start_idx:end_idx, :]
+            # return (trajs, ts), outputs
 
-            ts = t_evals[start_idx:end_idx]
-            trajs = outputs[:, start_idx:end_idx, :]
-            new_ts = np.linspace(ts[0], ts[-1], new_traj_len)
-            new_trajs = np.zeros((self.num_shots, new_traj_len, self.data_size))
-            for i in range(self.num_shots):
-                for j in range(self.data_size):
-                    new_trajs[i, :, j] = np.interp(new_ts, ts, trajs[i, :, j])
-
-            if self.use_full_traj:
-                return (new_trajs[:,:,:], new_ts), new_trajs
-            else:
-                return (new_trajs[:,0,:], new_ts), new_trajs
+            ## Select a random subset of traj_len-2 indices, then concatenate the start and end points
+            indices = np.sort(np.random.choice(np.arange(1,self.num_steps-1), traj_len-2, replace=False))
+            indices = np.concatenate(([0], indices, [self.num_steps-1]))
+            ts = t_eval[indices]
+            trajs = inputs[indices, :]
+            return (trajs, ts), outputs
 
     def __len__(self):
         return self.total_envs
@@ -69,7 +56,7 @@ class TrendsDataset(TimeSeriesDataset):
     For the synthetic control dataset from Time Series Classification
     """
 
-    def __init__(self, data_dir, skip_steps=-1, adaptation=False, traj_prop_min=1.0, use_full_traj=True):
+    def __init__(self, data_dir, skip_steps=1, traj_prop=1.0):
         try:
             time_series = []
             with open(data_dir+"synthetic_control.data", 'r') as f:
@@ -80,13 +67,12 @@ class TrendsDataset(TimeSeriesDataset):
         except:
             raise ValueError(f"Data not found at {data_dir}")
 
-        dataset = raw_data[:, None, ::skip_steps, None]
+        dataset = raw_data[:, ::skip_steps, None]
 
-        n_envs, n_trajs_per_env, n_timesteps, n_dimensions = dataset.shape
+        n_envs, n_timesteps, n_dimensions = dataset.shape
 
         ## Duplicate t_eval for each environment
         t_eval = np.linspace(0, 1., n_timesteps)
-        t_eval = np.repeat(t_eval[None,:], n_envs, axis=0)
 
         ## We have 600 samples and 6 classes as above. Create the labels
         labels = np.zeros((600,), dtype=int)
@@ -96,7 +82,49 @@ class TrendsDataset(TimeSeriesDataset):
         labels[400:500] = 4
         labels[500:600] = 5
 
-        super().__init__(dataset, labels, t_eval, adaptation, traj_prop_min, use_full_traj)
+        self.total_envs = n_envs
+        self.nb_classes = 6
+        self.num_steps = n_timesteps
+        self.data_size = n_dimensions
+
+        super().__init__(dataset, labels, t_eval, traj_prop)
+
+
+
+
+class MNISTDataset(TimeSeriesDataset):
+    """
+    For the MNIST dataset, where the time series is the pixels of the image, and the example of Trends dataset above
+    """
+
+    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0):
+        self.nb_classes = 10
+        self.num_steps = (28//mini_res)**2
+        self.data_size = 1
+        self.mini_res = mini_res
+
+        self.traj_prop = traj_prop
+
+        tf = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=0.5, std=0.5),
+                transforms.Lambda(lambda x: x[:, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
+                transforms.Lambda(lambda x: x.reshape(self.data_size, self.num_steps).t()),
+            ]
+        )
+
+        data = torchvision.datasets.MNIST(
+            data_dir, train=True if data_split=="train" else False, download=True, transform=tf
+        )
+
+        ## Get all the data in one large batch (to apply the transform)
+        dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
+
+        t_eval = np.linspace(0., 1., self.num_steps)
+        self.total_envs = dataset.shape[0]
+
+        super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
 
 
