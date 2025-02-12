@@ -16,8 +16,8 @@ import jax
 
 print("Available devices:", jax.devices())
 
-# from jax import config
-# config.update("jax_debug_nans", True)
+from jax import config
+config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 
@@ -42,30 +42,30 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2025
+SEED = 2024
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-mlp_hidden_size = 16
+mlp_hidden_size = 32
 mlp_depth = 2
 
 ## Optimiser hps
-init_lr = 1e-5
+init_lr = 1e-4
 
 ## Training hps
-print_every = 1000
-nb_epochs = 5000*2
-batch_size = 256*1
-grounding_length = 45       ## The length of the grounding pixel for the autoregressive digit generation
+print_every = 100
+nb_epochs = 500*5
+batch_size = 256//4
+grounding_length = 35       ## The length of the grounding pixel for the autoregressive digit generation
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 classification = False       ## True for classification, False for reconstruction
 mini_res_mnist = 1
 traj_train_prop = 1.0       ## Proportion of steps to sample to train each time series
-nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
-train_in_inference_mode = True
-use_mse_loss = False
+nb_recons_loss_steps = 60        ## Number of steps to sample for the reconstruction loss
+train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true" 
+use_mse_loss = True
 run_mnist = False
 print("==== Classification Task ====") if classification else print("==== Reconstruction Task ====")
 
@@ -95,7 +95,7 @@ if run_mnist:
                               num_workers=24)
     testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0),
                                 batch_size=batch_size, 
-                                shuffle=False, 
+                                shuffle=True, 
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
@@ -107,7 +107,7 @@ else:
                               shuffle=True)
     testloader = NumpyLoader(TrendsDataset(data_folder+"trends/", skip_steps=1, traj_prop=1.0), 
                              batch_size=batch_size if batch_size<600 else 600,
-                             shuffle=False)
+                             shuffle=True)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
 
 batch = next(iter(testloader))
@@ -194,24 +194,37 @@ class Ses2Seq(eqx.Module):
         self.data_size = data_size
         # self.alpha = jnp.array([0.0])
 
-    def __call__(self, xs, ts):
+    def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
             theta: (latent_size)
             """
+        alpha, key = aux
 
-        def forward(xs_, ts_):
+        def forward(xs_, ts_, k_):
             ## 1. Fine-tune the latents weights on the sequence we have
             def f(carry, input_signal):
                 thet, x_prev, t_prev, x_prev_prev = carry
-                x_true, t_curr = input_signal
+                x_true, t_curr, key_ = input_signal
                 delta_t = t_curr - t_prev
 
                 if self.inference_mode:
                     x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
                 else:
                     # x_t = x_true
-                    alpha = 1.0
-                    x_t = alpha*x_true + (1-alpha)*x_prev
+                    # alpha = 1.0
+                    # x_t = alpha*x_true + (1-alpha)*x_prev
+
+                    if train_strategy == "flip_coin":
+                        ## Flip a coin to decide whether to use the true value or the previous one
+                        x_t = jnp.where(jax.random.bernoulli(key_, 0.5), x_true, x_prev)
+
+                        ## Sample alpha from the uniform distribution and compare instead
+                        # alpha = jax.random.uniform(key, (1,), minval=0.0, maxval=1.0)
+                        # alpha = 0.75
+                    elif train_strategy == "teacher_forcing":
+                        x_t = alpha*x_true + (1-alpha)*x_prev
+                    else:
+                        x_t = x_true
 
                 if full_matrix_A:
                     # thet_next = delta_t*self.A@thet + delta_t*self.B@x_t
@@ -221,7 +234,8 @@ class Ses2Seq(eqx.Module):
                     # B = self.B(delta_t).reshape((self.A.shape[0], self.data_size))
                     # thet_next = self.A@thet + B@x_t
 
-                    thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(1*delta_t + 1e-6)
+                    # thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(delta_t + 1e-6)     ## Promising !
+                    thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
                     # thet_next = self.A@thet + self.B@(x_t - x_prev_prev)*delta_t
                     # thet_next = self.A@thet + self.B@(x_t)/(1*delta_t + 1e-3)
 
@@ -234,6 +248,7 @@ class Ses2Seq(eqx.Module):
                 params = unflatten_pytree(thet_next, shapes, treedef)
                 root_fun = eqx.combine(params, static)
                 x_next = root_fun(t_curr)
+                # x_next = jnp.nan_to_num(x_next, nan=0.0, posinf=0.0, neginf=0.0)
                 # x_next_guess = root_fun(t_curr)
                 if not use_mse_loss:
                     x_next_mean = x_next[:self.data_size]
@@ -245,12 +260,14 @@ class Ses2Seq(eqx.Module):
                 return (thet_next, x_next_mean, t_curr, x_prev), (x_next, )
 
             ## Call the JAX scan
-            _, (xs_final, ) = jax.lax.scan(f, (self.theta, xs_[0], -ts_[0:1], xs_[0]), (xs_, ts_[:, None]))
+            keys = jax.random.split(k_, xs_.shape[0])
+            _, (xs_final, ) = jax.lax.scan(f, (self.theta, xs_[0], -ts_[1:2], xs_[0]), (xs_, ts_[:, None], keys))
 
             return xs_final
 
         ## Batched version of the forward pass
-        return eqx.filter_vmap(forward)(xs, ts)
+        ks = jax.random.split(key, xs.shape[0])
+        return eqx.filter_vmap(forward)(xs, ts, ks)
 
 
 # %%
@@ -263,8 +280,8 @@ model = Ses2Seq(data_size=data_size,
                 activation="relu", 
                 key=model_keys[0])
 
-if train_in_inference_mode:
-    model = eqx.tree_at(lambda m:m.inference_mode, model, True)
+# if train_in_inference_mode:
+#     model = eqx.tree_at(lambda m:m.inference_mode, model, True)
 untrained_model = model
 ## Print the total number of learnable paramters in the model components
 print(f"Number of learnable parameters in the root network: {count_params((model.theta,))/1000:3.1f} k")
@@ -273,12 +290,12 @@ print(f"Number of learnable parameters in the model: {count_params(model)/1000:3
 
 # %%
 
-def loss_fn(model, batch, key):
+def loss_fn(model, batch, utils):
     (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
 
     if classification:
         ## Categorical cross-entropy loss with optax
-        X_classes = model(X_true, times)     ## Y_hat: (batch, time, num_classes) 
+        X_classes = model(X_true, times, utils)     ## Y_hat: (batch, time, num_classes) 
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
         losses_c = optax.softmax_cross_entropy_with_integer_labels(pred_logits, X_labels)
         loss = jnp.mean(losses_c)
@@ -289,7 +306,8 @@ def loss_fn(model, batch, key):
 
     else:
         ## Make a reconstruction loss
-        X_recons = model(X_true, times)     ## Y_hat: (batch, time, data_size) 
+        X_recons = model(X_true, times, utils)     ## Y_hat: (batch, time, data_size) 
+        alpha, key = utils
 
         ## Randomly sample 2 points in the sequence to compare
         # indices = jax.random.randint(key, (2,), 0, X_true.shape[1])
@@ -324,7 +342,25 @@ def train_step(model, batch, opt_state, key):
 
     return model, opt_state, loss, aux_data
 
+@eqx.filter_jit
+def alpha_schedule(epoch, nb_epochs):
+    """ Compute the schedule for the alpha parameter 
+    At epoch 0, alpha = 1.0
+    At epoch nb_epochs, alpha = 0.0
+    Decreases smoothly from 1.0 to 0.0. along a sigmoid whose flatness if controlled by nb_epochs
+    """
+    steepness = 10 / nb_epochs
+    midpoint = nb_epochs / 2
+    return 1.0 - (1 / (1 + jnp.exp(-steepness * (epoch - midpoint))))
 
+## Plot the alpha schedule
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+epochs = jnp.arange(nb_epochs)
+alpha_vals = eqx.filter_vmap(alpha_schedule, in_axes=(0,None))(epochs, nb_epochs)
+ax.plot(epochs, alpha_vals, "g-")
+ax.set_title("Alpha schedule")
+ax.set_xlabel("Epoch")
+plt.draw();
 
 
 #%%
@@ -338,13 +374,16 @@ if train:
         num_steps = trainloader.num_batches * nb_epochs
         bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
         sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
-        opt = optax.adabelief(sched)
+
+        opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
+        # opt = optax.adabelief(sched)
 
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
     train_key, _ = jax.random.split(main_key)
 
     losses = []
+    alpha = 1.
 
     print(f"\n\n=== Beginning Training ... ===")
     start_time = time.time()
@@ -354,9 +393,11 @@ if train:
         nb_batches = 0.
         loss_sum = 0.
 
+        alpha = alpha_schedule(epoch, nb_epochs)
+
         for i, batch in enumerate(trainloader):
             train_key, _ = jax.random.split(train_key)
-            model, opt_state, loss, aux = train_step(model, batch, opt_state, train_key)
+            model, opt_state, loss, aux = train_step(model, batch, opt_state, (alpha, train_key))
 
             loss_sum += loss
             nb_batches += 1
@@ -401,9 +442,15 @@ else:
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-ax = sbplot(np.array(losses), x_label='Epoch', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
+
+## Filter outlier vales and retain the rest
+clean_losses = np.array(losses)
+epochs = np.arange(len(losses))
+
+clean_losses = np.where(clean_losses<np.percentile(clean_losses, 90), clean_losses, np.nan)
+ax = sbplot(epochs, clean_losses, x_label='Epoch', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
+
 # plt.legend()
-# ax.set_ylim(np.min(losses)-2e-2, min(np.max(losses)+2e-2, 1.0))
 plt.draw();
 plt.savefig(run_folder+"loss.png", dpi=100, bbox_inches='tight')
 
@@ -463,17 +510,19 @@ if full_matrix_A:
 ## Let's evaluate the model on the test set
 accs = []
 mses = []
+test_key, _ = jax.random.split(main_key)
 for i, batch in enumerate(testloader):
+    test_key, _ = jax.random.split(test_key)
     (X_true, times), X_labels = batch
 
     if classification:
-        X_classes = model(X_true, times)
+        X_classes = model(X_true, times, (alpha, test_key))
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
         acc = jnp.mean(jnp.argmax(pred_logits, axis=-1) == X_labels)
         accs.append(acc)
 
     else:
-        X_recons = model(X_true, times)
+        X_recons = model(X_true, times, (alpha, test_key))
         if not use_mse_loss:
             X_recons = X_recons[:, :, :data_size]
         mse = jnp.mean((X_recons - X_true)**2)
@@ -498,7 +547,7 @@ if not classification:
 
     batch = next(iter(visloader))
     (xs_true, times), labels = batch
-    xs_recons = model(xs_true, times)
+    xs_recons = model(xs_true, times, (alpha, test_key))
 
     if not use_mse_loss:
         xs_recons = xs_recons[:, :, :data_size]
