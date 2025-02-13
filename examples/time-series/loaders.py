@@ -120,6 +120,7 @@ class MNISTDataset(TimeSeriesDataset):
 
         ## Get all the data in one large batch (to apply the transform)
         dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
+        # dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=128, shuffle=True)))
 
         t_eval = np.linspace(0., 1., self.num_steps)
         self.total_envs = dataset.shape[0]

@@ -17,19 +17,10 @@ import jax
 print("Available devices:", jax.devices())
 
 from jax import config
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
-# config.update("jax_enable_x64", True)
-from jax.experimental import checkify
-
-## Ignore all warnings
-import warnings
-warnings.filterwarnings("ignore")
 
 import jax.numpy as jnp
-
-## Import jax partial
-from jax.tree_util import Partial
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -40,6 +31,8 @@ import equinox as eqx
 from neuralhub import *
 from loaders import TrendsDataset, MNISTDataset
 from selfmod import NumpyLoader, setup_run_folder, torch
+import torchvision
+from torchvision import transforms
 
 import optax
 import time
@@ -50,24 +43,22 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-mlp_hidden_size = 16*8
-mlp_depth = 1
-rnn_inner_dims = []
-nb_rnn_layers = len(rnn_inner_dims) + 1
+mlp_hidden_size = 32
+mlp_depth = 2
 
 ## Optimiser hps
 init_lr = 1e-4
 
 ## Training hps
 print_every = 10
-nb_epochs = 10*30
-batch_size = 128
+nb_epochs = 30*10
+batch_size = 256*2
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 classification = False       ## True for classification, False for reconstruction
@@ -80,7 +71,7 @@ use_mse_loss = False
 run_mnist = True
 print("==== Classification Task ====") if classification else print("==== Reconstruction Task ====")
 
-train = True
+train = False
 data_folder = "./data/" if train else "../../data/"
 
 # run_folder = "./runs/250208-184005-Test/" if train else "./"
@@ -129,8 +120,6 @@ batch = next(iter(testloader))
 print("Images shape:", images.shape)
 print("Labels shape:", labels.shape)
 
-print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
-
 ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
 fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
 colors = ['r', 'g', 'b', 'c', 'm', 'y']
@@ -151,11 +140,10 @@ class RootMLP(eqx.Module):
     network: eqx.Module
     props: any      ## Properties of the network
 
-    def __init__(self, input_dim, output_dims, hidden_size, depth, activation=jax.nn.tanh, key=None):
+    def __init__(self, input_dim, output_dims, hidden_size, depth, activation=jax.nn.softplus, key=None):
         key = key if key is not None else jax.random.PRNGKey(0)
         keys = jax.random.split(key, num=2)
-        self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, final_activation=jax.nn.tanh, key=keys[0])
-        # self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
+        self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
 
         self.props = (input_dim, output_dims, hidden_size, depth, activation)
 
@@ -166,9 +154,9 @@ class RootMLP(eqx.Module):
 # ## Define model and loss function for the learner
 class Ses2Seq(eqx.Module):
     """ Sequence to sequence model which takes in an initial latent space """
-    As: jnp.ndarray
-    Bs: jnp.ndarray
-    thetas: jnp.ndarray
+    A: jnp.ndarray
+    B: jnp.ndarray
+    theta: jnp.ndarray
     # alpha: jnp.ndarray
 
     root_utils: list
@@ -180,7 +168,6 @@ class Ses2Seq(eqx.Module):
                  width, 
                  depth, 
                  activation="relu",
-                 rnn_inner_dims=[],
                  key=None):
 
         keys = jax.random.split(key, num=3)
@@ -193,31 +180,21 @@ class Ses2Seq(eqx.Module):
                 out_size = data_size
             else:      ## NLL loss
                 out_size = 2*data_size
+        root = RootMLP(data_size, out_size, width, depth, builtin_fns[activation], key=keys[1])
 
-        rnn_in_layers = [data_size] + rnn_inner_dims
-        rnn_out_layers = rnn_inner_dims + [out_size]
-        B_out_shapes = rnn_in_layers[:-1] + [data_size]
-        keys = jax.random.split(keys[2], num=nb_rnn_layers)
-        thetas = []
-        root_utils = []
-        As = []
-        Bs = []
-        for i in range(nb_rnn_layers):
-            root = RootMLP(1, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
-            params, static = eqx.partition(root, eqx.is_array)
-            weights, shapes, treedef = flatten_pytree(params)
-            root_utils.append((shapes, treedef, static, root.props))
-            thetas.append(weights)
+        params, static = eqx.partition(root, eqx.is_array)
+        weights, shapes, treedef = flatten_pytree(params)
+        self.root_utils = (shapes, treedef, static, root.props)
+        self.theta = weights
+        # self.theta = jnp.clip(weights, -weights_lim, weights_lim)
 
-            latent_size = weights.shape[0]
-            # As.append(jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,)))
-            As.append(jnp.eye(latent_size, latent_size)*1. if full_matrix_A else jnp.zeros((latent_size,)))
-            Bs.append(jnp.zeros((latent_size, B_out_shapes[i])))
+        latent_size = weights.shape[0]
+        self.A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
+        self.B = jnp.zeros((latent_size, data_size))
 
-        self.root_utils = root_utils
-        self.thetas = thetas
-        self.As = As
-        self.Bs = Bs
+        # self.B = eqx.nn.Linear(1, latent_size*data_size, use_bias=False, key=keys[2])
+        # ## Set the weights of B to zero
+        # self.B = eqx.tree_at(lambda m: m.weight, self.B, jnp.zeros_like(self.B.weight))
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
@@ -231,73 +208,71 @@ class Ses2Seq(eqx.Module):
 
         def forward(xs_, ts_, k_):
             ## 1. Fine-tune the latents weights on the sequence we have
+            def f(carry, input_signal):
+                thet, x_prev, t_prev, x_prev_prev = carry
+                x_true, t_curr, key_ = input_signal
+                delta_t = t_curr - t_prev
 
-            ## Call the JAX scan across layers
-            nb_rnn_layers = len(self.thetas)
-            layer_keys = jax.random.split(k_, nb_rnn_layers)
-            xs_orig = xs_
+                if self.inference_mode:
+                    x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
+                else:
+                    # x_t = x_true
+                    # alpha = 1.0
+                    # x_t = alpha*x_true + (1-alpha)*x_prev
 
-            for i in range(nb_rnn_layers):
-                keys = jax.random.split(layer_keys[i], xs_.shape[0])
-                final_layer = i==nb_rnn_layers-1
+                    if train_strategy == "flip_coin":
+                        ## Flip a coin to decide whether to use the true value or the previous one
+                        x_t = jnp.where(jax.random.bernoulli(key_, 0.15), x_true, x_prev)
 
-                ## Do a partial on f
-                def f(carry, input_signal):
-                    thet, x_prev, t_prev, x_prev_prev = carry
-                    x_true, t_curr, key_ = input_signal
-                    delta_t = t_curr - t_prev
-
-                    A = self.As[i]
-                    B = self.Bs[i]
-                    root_utils = self.root_utils[i]
-
-                    # A = jnp.clip(self.As[i], -0.001, 0.001)
-                    # B = jnp.clip(self.Bs[i], -0.001, 0.001)
-
-                    if self.inference_mode:
-                        x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
+                        ## Sample alpha from the uniform distribution and compare instead
+                        # alpha = jax.random.uniform(key, (1,), minval=0.0, maxval=1.0)
+                        # alpha = 0.75
+                    elif train_strategy == "teacher_forcing":
+                        x_t = alpha*x_true + (1-alpha)*x_prev
                     else:
-                        if train_strategy == "flip_coin":
-                            x_t = jnp.where(jax.random.bernoulli(key_, 0.15), x_true, x_prev)
-                        elif train_strategy == "teacher_forcing":
-                            x_t = alpha*x_true + (1-alpha)*x_prev
-                        else:
-                            x_t = x_true
+                        x_t = x_true
 
-                    if full_matrix_A:
-                        # jax.debug.print("x_t and x_prev_prev: {} {}", x_t, x_prev_prev)
+                if full_matrix_A:
+                    # thet_next = delta_t*self.A@thet + delta_t*self.B@x_t
+                    # thet_next = self.A@thet + delta_t*self.B@x_t
+                    # thet_next = self.A@thet + self.B@x_t
 
-                        # checkify.check(jnp.isnan(x_t).any(), "x_t is nan")
-                        # checkify.check(jnp.isnan(x_prev_prev).any(), "x_prev_prev is nan")
-                        # checkify.check(jnp.isnan(thet).any(), "theta_next is nan")
+                    # B = self.B(delta_t).reshape((self.A.shape[0], self.data_size))
+                    # thet_next = self.A@thet + B@x_t
 
-                        # print("x_t and x_prev_prev: ", x_t.shape, x_prev_prev.shape, B.shape)
-                        # thet_next = A@thet + B@(x_t)
-                        thet_next = A@thet + B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
-                        # thet_next = A@thet + B@jnp.square(x_t - x_prev_prev)/(delta_t)     ## Promising !
+                    # thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(delta_t + 1e-6)     ## Promising !
+                    thet_next = self.A@thet + self.B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
+                    # thet_next = self.A@thet + self.B@(x_t - x_prev_prev)*delta_t
+                    # thet_next = self.A@thet + self.B@(x_t)/(1*delta_t + 1e-3)
 
-                    else:
-                        thet_next = A*thet + delta_t*B@x_t
+                else:
+                    thet_next = self.A*thet + delta_t*self.B@x_t
+                    # thet_next = self.A*thet + self.B@x_t
 
-                    ## 2. Decode the latent space
-                    # thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
-                    # jax.debug.print("Smallest and biggest values in thet_next: {} {}", jnp.min(thet_next), jnp.max(thet_next))
+                ## 2. Decode the latent space
+                # thet_next = jnp.nan_to_num(thet_next, nan=0.0, posinf=0.0, neginf=0.0)
+                thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
 
-                    shapes, treedef, static, _ = root_utils
-                    params = unflatten_pytree(thet_next, shapes, treedef)
-                    root_fun = eqx.combine(params, static)
-                    x_next = root_fun(t_curr)
+                shapes, treedef, static, _ = self.root_utils
+                params = unflatten_pytree(thet_next, shapes, treedef)
+                root_fun = eqx.combine(params, static)
+                x_next = root_fun(t_curr)
+                # x_next = jnp.nan_to_num(x_next, nan=0.0, posinf=0.0, neginf=0.0)
+                # x_next_guess = root_fun(t_curr)
+                if not use_mse_loss:
+                    x_next_mean = x_next[:self.data_size]
+                    # x_next_guess_mean = x_next_guess[:self.data_size]
+                else:
+                    x_next_mean = x_next
+                    # x_next_guess_mean = x_next_guess
 
-                    x_next_mean = x_next[:x_true.shape[0]]
+                return (thet_next, x_next_mean, t_curr, x_prev), (x_next, )
 
-                    return (thet_next, x_next_mean, t_curr, x_prev), (x_next, )
+            ## Call the JAX scan
+            keys = jax.random.split(k_, xs_.shape[0])
+            _, (xs_final, ) = jax.lax.scan(f, (self.theta, xs_[0], -ts_[1:2], xs_[0]), (xs_, ts_[:, None], keys))
 
-                sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                # print("Shapes of thetas:", xs_.shape)
-                # print("Current layer:", i)
-                _, (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0]), (sup_signal, ts_[:, None], keys))
-
-            return xs_
+            return xs_final
 
         ## Batched version of the forward pass
         ks = jax.random.split(key, xs.shape[0])
@@ -312,15 +287,14 @@ model = Ses2Seq(data_size=data_size,
                 width=mlp_hidden_size, 
                 depth=mlp_depth, 
                 activation="relu", 
-                rnn_inner_dims=rnn_inner_dims,
                 key=model_keys[0])
 
 # if train_in_inference_mode:
 #     model = eqx.tree_at(lambda m:m.inference_mode, model, True)
 untrained_model = model
 ## Print the total number of learnable paramters in the model components
-print(f"Number of learnable parameters in the root network: {count_params((model.thetas,))/1000:3.1f} k")
-print(f"Number of learnable parameters in the seqtoseq: {count_params((model.As, model.Bs))/1000:3.1f} k")
+print(f"Number of learnable parameters in the root network: {count_params((model.theta,))/1000:3.1f} k")
+print(f"Number of learnable parameters in the seqtoseq: {count_params((model.A, model.B))/1000:3.1f} k")
 print(f"Number of learnable parameters in the model: {count_params(model)/1000:3.1f} k")
 
 # %%
@@ -368,7 +342,7 @@ def loss_fn(model, batch, utils):
 
 @eqx.filter_jit
 def train_step(model, batch, opt_state, key):
-    # print('\nCompiling function "train_step" ...')
+    print('\nCompiling function "train_step" ...')
 
     (loss, aux_data), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, batch, key)
 
@@ -413,8 +387,8 @@ if train:
         bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
         sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
-        # opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
-        opt = optax.adabelief(sched)
+        opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
+        # opt = optax.adabelief(sched)
 
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
@@ -498,31 +472,6 @@ if os.path.exists(run_folder+"losses.npy"):
     # plt.legend()
     plt.draw();
     plt.savefig(run_folder+"loss.png", dpi=100, bbox_inches='tight')
-else: ## Attempt to parse and collect losses from the nohup.log file
-    try:
-        with open(run_folder+"nohup.log", 'r') as f:
-            lines = f.readlines()
-        losses = []
-        loss_name = "MSELoss" if use_mse_loss else "NLL Loss"
-        for line in lines:
-            if loss_name in line:
-                loss = float(line.split(loss_name+": ")[1].strip())
-                losses.append(loss)
-
-        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-
-        ## Filter outlier vales and retain the rest
-        clean_losses = np.array(losses)
-        epochs = np.arange(len(losses))
-
-        clean_losses = np.where(clean_losses<np.percentile(clean_losses, 90), clean_losses, np.nan)
-        ax = sbplot(epochs, clean_losses, x_label='Train Steps', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
-
-        # plt.legend()
-        plt.draw();
-        plt.savefig(run_folder+"loss.png", dpi=100, bbox_inches='tight')
-    except:
-        print("No losses found in the nohup.log file")
 
 
 # %%
@@ -534,23 +483,23 @@ else: ## Attempt to parse and collect losses from the nohup.log file
 ## Let's visualise the distribution of values along the main diagonal of A and theta
 fig, axs = plt.subplots(1, 2, figsize=(20, 10))
 if full_matrix_A:
-    axs[0].hist(jnp.diag(model.As[0], k=0), bins=100)
+    axs[0].hist(jnp.diag(model.A, k=0), bins=100)
 else:
-    axs[0].hist(model.As[0], bins=100)
+    axs[0].hist(model.A, bins=100)
 
-axs[0].set_title("Histogram of diagonal values of A (first layer)")
+axs[0].set_title("Histogram of diagonal values of A")
 
-axs[1].hist(model.thetas[0], bins=100, label="After Training")
-axs[1].hist(untrained_model.thetas[0], bins=100, alpha=0.5, label="Before Training", color='r')
-axs[1].set_title(r"Histogram of $\theta_0$ values")
+axs[1].hist(model.theta, bins=100, label="After Training")
+axs[1].hist(untrained_model.theta, bins=100, alpha=0.5, label="Before Training", color='r')
+axs[1].set_title(r"Histogram of $\theta$ values")
 plt.legend();
 plt.draw();
 plt.savefig(run_folder+"A_theta_histograms.png", dpi=100, bbox_inches='tight')
 
 ## PLot all values of B in a lineplot (all dimensions)
-if not isinstance(model.Bs[0], eqx.nn.Linear):
+if not isinstance(model.B, eqx.nn.Linear):
     fig, ax = plt.subplots(1, 1, figsize=(10, 4))
-    ax.plot(model.Bs[0], label="Values of B")
+    ax.plot(model.B, label="Values of B")
     ax.set_title("Values of B")
     ax.set_xlabel("Dimension")
     plt.draw();
@@ -564,11 +513,11 @@ if full_matrix_A:
     min_val = -0.00
     max_val = 0.003
 
-    img = axs[0].imshow(untrained_model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
+    img = axs[0].imshow(untrained_model.A, cmap='viridis', vmin=min_val, vmax=max_val)
     axs[0].set_title("Untrained A")
     plt.colorbar(img, ax=axs[0], shrink=0.7)
 
-    img = axs[1].imshow(model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
+    img = axs[1].imshow(model.A, cmap='viridis', vmin=min_val, vmax=max_val)
     axs[1].set_title("Trained A")
     plt.colorbar(img, ax=axs[1], shrink=0.7)
     plt.draw();
