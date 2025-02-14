@@ -44,6 +44,9 @@ examples/data/
 ## Cprofile
 examples/runs/cprofile/*
 
+## Ignore all "checkpoint" folders
+**/checkpoint/*
+
 ## Data
 examples/pendulums/data/*
 examples/dahlquist/data/*
@@ -68,3 +71,5 @@ examples/hierarchical-lfads/runs/241127-152228-SuperVariational/valid_latents_fu
 examples/time-series/runs/*
 examples/time-series/data/*
 examples/time-series/wandb/*
+
+!examples/time-series/runs/250214-104530-MegaGenius*
