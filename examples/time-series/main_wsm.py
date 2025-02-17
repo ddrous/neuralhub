@@ -66,11 +66,11 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 1
-# nb_epochs = 10*9*4*2
-nb_epochs = 2
+nb_epochs = 10*9*4*2
 batch_size = 128*2
 unit_normalise = True
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
+autoregressive_inference = False    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
@@ -279,7 +279,10 @@ class Ses2Seq(eqx.Module):
                         x_t = x_true
                     else:
                         if self.inference_mode:
-                            x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
+                            if autoregressive_inference:        ## Autoregressive mode (with some grounding)
+                                x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
+                            else:
+                                x_t = x_true
                         else:
                             if train_strategy == "flip_coin":
                                 x_t = jnp.where(jax.random.bernoulli(key_, 0.25), x_true, x_prev)
@@ -318,7 +321,14 @@ class Ses2Seq(eqx.Module):
                     return (thet_next, x_next_mean, t_curr, x_prev, thet), (y_next, )
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                _, (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], self.thetas[i]), (sup_signal, ts_[:, None], keys))
+                (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], self.thetas[i]), (sup_signal, ts_[:, None], keys))
+
+                if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
+                    ### We reconstitute the model, and we apply the model at each step
+                    shapes, treedef, static, _ = self.root_utils[i]
+                    params = unflatten_pytree(thet_final, shapes, treedef)
+                    root_fun = eqx.combine(params, static)
+                    xs_ = eqx.filter_vmap(root_fun)(ts_[:, None])
 
             return xs_
 
