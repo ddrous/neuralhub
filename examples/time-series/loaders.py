@@ -92,12 +92,17 @@ class TrendsDataset(TimeSeriesDataset):
 
 
 
+
+
+
+
+
 class MNISTDataset(TimeSeriesDataset):
     """
     For the MNIST dataset, where the time series is the pixels of the image, and the example of Trends dataset above
     """
 
-    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0):
+    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0, unit_normalise=False):
         self.nb_classes = 10
         self.num_steps = (28//mini_res)**2
         self.data_size = 1
@@ -108,7 +113,7 @@ class MNISTDataset(TimeSeriesDataset):
         tf = transforms.Compose(
             [
                 transforms.ToTensor(),
-                transforms.Normalize(mean=0.5, std=0.5),
+                transforms.Normalize(mean=0.5, std=0.5) if not unit_normalise else transforms.Lambda(lambda x: x),
                 transforms.Lambda(lambda x: x[:, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
                 transforms.Lambda(lambda x: x.reshape(self.data_size, self.num_steps).t()),
             ]
@@ -131,7 +136,40 @@ class MNISTDataset(TimeSeriesDataset):
 
 
 
+class CIFARDataset(TimeSeriesDataset):
+    """
+    For the MNIST dataset, where the time series is the pixels of the image, and the example of Trends dataset above
+    """
 
+    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0, unit_normalise=False):
+        self.nb_classes = 10
+        self.num_steps = (32//mini_res)**2
+        self.data_size = 3
+        self.mini_res = mini_res
+
+        self.traj_prop = traj_prop
+
+        tf = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=0.5, std=0.5) if not unit_normalise else transforms.Lambda(lambda x: x),
+                transforms.Lambda(lambda x: x[:, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
+                transforms.Lambda(lambda x: x.reshape(self.data_size, self.num_steps).t()),
+            ]
+        )
+
+        data = torchvision.datasets.CIFAR10(
+            data_dir, train=True if data_split=="train" else False, download=True, transform=tf
+        )
+
+        ## Get all the data in one large batch (to apply the transform)
+        dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
+        # dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=128, shuffle=True)))
+
+        t_eval = np.linspace(0., 1., self.num_steps)
+        self.total_envs = dataset.shape[0]
+
+        super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
 
 

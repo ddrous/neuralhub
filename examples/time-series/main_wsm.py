@@ -38,7 +38,7 @@ import equinox as eqx
 
 # import matplotlib.pyplot as plt
 from neuralhub import *
-from loaders import TrendsDataset, MNISTDataset
+from loaders import TrendsDataset, MNISTDataset, CIFARDataset
 from selfmod import NumpyLoader, setup_run_folder, torch
 
 import optax
@@ -65,24 +65,26 @@ nb_rnn_layers = len(rnn_inner_dims) + 1
 init_lr = 1e-4
 
 ## Training hps
-print_every = 10
-nb_epochs = 10*9*4*2
-batch_size = 128*4
+print_every = 1
+# nb_epochs = 10*9*4*2
+nb_epochs = 2
+batch_size = 128*2
+unit_normalise = True
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
-classification = True       ## True for classification, False for reconstruction
+supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
 mini_res_mnist = 1
 traj_train_prop = 1.0       ## Proportion of steps to sample to train each time series
 weights_lim = 5e-1         ## Limit the weights of the root model to this value
 nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-run_mnist = True
-print("==== Classification Task ====") if classification else print("==== Reconstruction Task ====")
+print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
 data_folder = "./data/" if train else "../../data/"
+dataset = "cifar"               ## mnist, cifar, or trends
 
 # run_folder = "./runs/250208-184005-Test/" if train else "./"
 run_folder = None if train else "./"
@@ -101,14 +103,27 @@ os.system(f"cp loaders.py {run_folder}");
 
 #%%
 
-if run_mnist:
+if dataset=="mnist":
     # ### MNIST Classification (From Sacha Rush's Annotated S4)
     print(" #### MNIST Dataset ####")
-    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop), 
+    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0),
+    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise),
+                                batch_size=batch_size, 
+                                shuffle=True, 
+                                num_workers=24)
+    nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
+    print("Training sequence length:", seq_length)
+elif dataset=="cifar":
+    # ### MNIST Classification (From Sacha Rush's Annotated S4)
+    print(" #### MNIST Dataset ####")
+    trainloader = NumpyLoader(CIFARDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise), 
+                              batch_size=batch_size, 
+                              shuffle=True, 
+                              num_workers=24)
+    testloader = NumpyLoader(CIFARDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
@@ -130,17 +145,18 @@ batch = next(iter(testloader))
 print("Images shape:", images.shape)
 print("Labels shape:", labels.shape)
 
-print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
+print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))  
 
 ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
 fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
 colors = ['r', 'g', 'b', 'c', 'm', 'y']
-res = 28 // mini_res_mnist
+width = 28 // mini_res_mnist if dataset=="mnist" else 32 // mini_res_mnist
+res = (width, width, data_size)
 for i in range(4):
     for j in range(4):
         idx = np.random.randint(0, images.shape[0])
-        if run_mnist:
-            axs[i, j].imshow(images[idx].reshape((res, res)), cmap='gray')
+        if dataset in ["mnist", "cifar"]:
+            axs[i, j].imshow(images[idx].reshape(res), cmap='gray')
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
         axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
@@ -156,7 +172,8 @@ class RootMLP(eqx.Module):
         key = key if key is not None else jax.random.PRNGKey(0)
         keys = jax.random.split(key, num=2)
 
-        final_activation = jax.nn.tanh if run_mnist else lambda x:x
+        final_activation = jax.nn.sigmoid if unit_normalise else jax.nn.tanh
+        # final_activation = lambda x:x
         self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, final_activation=final_activation, key=keys[0])
         # self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
 
@@ -172,7 +189,6 @@ class Ses2Seq(eqx.Module):
     As: jnp.ndarray
     Bs: jnp.ndarray
     thetas: jnp.ndarray
-    # alpha: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -188,14 +204,18 @@ class Ses2Seq(eqx.Module):
 
         keys = jax.random.split(key, num=3)
         builtin_fns = {"relu":jax.nn.relu, "tanh":jax.nn.tanh, 'softplus':jax.nn.softplus}
-        # out_size = nb_classes if classification else data_size
-        if classification:
+        if supervision_task=="classification":
             out_size = nb_classes
-        else:
+        elif supervision_task=="reconstruction":
             if use_mse_loss:
                 out_size = data_size
             else:      ## NLL loss
                 out_size = 2*data_size
+        else:
+            if use_mse_loss:
+                out_size = data_size + nb_classes
+            else:      ## NLL loss
+                out_size = 2*data_size + nb_classes
 
         rnn_in_layers = [data_size] + rnn_inner_dims
         rnn_out_layers = rnn_inner_dims + [out_size]
@@ -226,7 +246,6 @@ class Ses2Seq(eqx.Module):
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
-        # self.alpha = jnp.array([0.0])
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -256,38 +275,25 @@ class Ses2Seq(eqx.Module):
                     B = self.Bs[i]
                     root_utils = self.root_utils[i]
 
-                    # A = jnp.clip(self.As[i], -0.001, 0.001)
-                    # B = jnp.clip(self.Bs[i], -0.001, 0.001)
-
-                    if self.inference_mode:
-                        x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
+                    if supervision_task=="classification":
+                        x_t = x_true
                     else:
-                        if train_strategy == "flip_coin":
-                            x_t = jnp.where(jax.random.bernoulli(key_, 0.25), x_true, x_prev)
-                        elif train_strategy == "teacher_forcing":
-                            x_t = alpha*x_true + (1-alpha)*x_prev
+                        if self.inference_mode:
+                            x_t = jnp.where(t_curr<grounding_length/seq_length, x_true, x_prev)
                         else:
-                            x_t = x_true
+                            if train_strategy == "flip_coin":
+                                x_t = jnp.where(jax.random.bernoulli(key_, 0.25), x_true, x_prev)
+                            elif train_strategy == "teacher_forcing":
+                                x_t = alpha*x_true + (1-alpha)*x_prev
+                            else:
+                                x_t = x_true
 
                     if full_matrix_A:
-                        # jax.debug.print("x_t and x_prev_prev: {} {}", x_t, x_prev_prev)
-
-                        # checkify.check(jnp.isnan(x_t).any(), "x_t is nan")
-                        # checkify.check(jnp.isnan(x_prev_prev).any(), "x_prev_prev is nan")
-                        # checkify.check(jnp.isnan(thet).any(), "theta_next is nan")
-
-                        # print("x_t and x_prev_prev: ", x_t.shape, x_prev_prev.shape, B.shape)
-                        # thet_next = A@thet + B@(x_t)
-                        # thet_next = A@(thet - thet_prev)/(delta_t) + B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
-                        # thet_next = A@thet + B@jnp.square(x_t - x_prev_prev)/(delta_t)     ## Promising !
-
-                        # thet_next = thet + A@(thet_prev*delta_t) + B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
-                        # thet_next = thet + A@(thet_prev/delta_t) + B@(x_t - x_prev_prev)/(delta_t)     ## Promising !
-
                         if use_theta_prev:
-                            thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Promising !
+                            thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
                         else:
                             thet_next = A@(thet) + B@(x_t - x_prev_prev)     ## Promising !
+                            # thet_next = A@(thet) + B@(x_t)     ## Promising !
 
                     else:
                         thet_next = A*thet + delta_t*B@x_t
@@ -299,15 +305,19 @@ class Ses2Seq(eqx.Module):
                     shapes, treedef, static, _ = root_utils
                     params = unflatten_pytree(thet_next, shapes, treedef)
                     root_fun = eqx.combine(params, static)
-                    x_next = root_fun(t_curr+delta_t)
+                    y_next = root_fun(t_curr+delta_t)
 
-                    x_next_mean = x_next[:x_true.shape[0]]
+                    if supervision_task=="classification":
+                        x_next_mean = x_true
+                    else:
+                        if not unit_normalise:
+                            x_next_mean = y_next[:x_true.shape[0]]
+                        else:
+                            x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, thet), (x_next, )
+                    return (thet_next, x_next_mean, t_curr, x_prev, thet), (y_next, )
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                # print("Shapes of thetas:", xs_.shape)
-                # print("Current layer:", i)
                 _, (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], self.thetas[i]), (sup_signal, ts_[:, None], keys))
 
             return xs_
@@ -341,18 +351,32 @@ print(f"Number of learnable parameters in the model: {count_params(model)/1000:3
 def loss_fn(model, batch, utils):
     (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
 
-    if classification:
+    if supervision_task=="classification":
         ## Categorical cross-entropy loss with optax
         X_classes = model(X_true, times, utils)     ## Y_hat: (batch, time, num_classes) 
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
+
         losses_c = optax.softmax_cross_entropy_with_integer_labels(pred_logits, X_labels)
         loss = jnp.mean(losses_c)
+
+        # ## Use the NLL loss for this classification instead
+        # loss = -jnp.mean(jax.nn.log_softmax(pred_logits)[:, X_labels])
+
+        ## Use one hot encoding and MSE loss
+        # X_labels_onehot = jax.nn.one_hot(X_labels, nb_classes)
+        # loss = jnp.mean((X_labels_onehot - jax.nn.softmax(pred_logits))**2)
+
+        # ## Use one hot encoding and NLL loss with fixed variance
+        # X_labels_onehot = jax.nn.one_hot(X_labels, nb_classes)
+        # means = jax.nn.softmax(pred_logits)
+        # stds = jnp.ones_like(means) * 1e-1
+        # loss = jnp.mean(jnp.log(stds) + 0.5*((X_labels_onehot - means)/stds)**2)
 
         ## Calculate accuracy
         acc = jnp.mean(jnp.argmax(pred_logits, axis=-1) == X_labels)
         return loss, (acc,)
 
-    else:
+    elif supervision_task=="reconstruction":
         ## Make a reconstruction loss
         X_recons = model(X_true, times, utils)     ## Y_hat: (batch, time, data_size) 
         alpha, key = utils
@@ -378,6 +402,35 @@ def loss_fn(model, batch, utils):
         loss = jnp.mean(loss_r)
         return loss, (loss,)
 
+    else: ## Both classification and reconstruction: the data and the classes are concatenated in that order
+        X_full = model(X_true, times, utils)     ## Y_hat: (batch, time, data_size+nb_classes)
+        recons_size = data_size if use_mse_loss else 2*data_size
+        X_recons, X_classes = X_full[:, :, :recons_size], X_full[:, :, recons_size:]
+        alpha, key = utils
+
+        batch_size, nb_timesteps = X_true.shape[0], X_true.shape[1]
+        indices_0 = jnp.arange(batch_size)
+        indices_1 = jax.random.randint(key, (batch_size, nb_recons_loss_steps), 0, nb_timesteps)
+
+        X_recons_ = jnp.stack([X_recons[indices_0, indices_1[:,j]] for j in range(nb_recons_loss_steps)], axis=1)
+        X_true_ = jnp.stack([X_true[indices_0, indices_1[:,j]] for j in range(nb_recons_loss_steps)], axis=1)
+
+        if use_mse_loss:
+            losses = optax.l2_loss(X_recons_, X_true_)
+            loss_r = jnp.mean(losses)
+        else: ## Use the negative log likelihood loss
+            means = X_recons_[:, :, :data_size]
+            stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
+            losses = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
+            print("Losses shape:", losses.shape, stds.shape, means.shape, X_true_.shape)
+            loss_r = jnp.mean(losses)
+
+        losses_c = optax.softmax_cross_entropy_with_integer_labels(X_classes[:, -1, :], X_labels)
+        loss_c = jnp.mean(losses_c)
+        loss = loss_r + 1e-2*loss_c
+
+        acc = jnp.mean(jnp.argmax(X_classes[:, -1, :], axis=-1) == X_labels)
+        return loss, (loss_r, loss_c, acc)
 
 @eqx.filter_jit
 def train_step(model, batch, opt_state, key):
@@ -417,18 +470,14 @@ if train_strategy == "teacher_forcing":
 alpha = 1.
 
 if train:
-    # sched = optax.exponential_decay(init_value=init_lr, transition_steps=10, decay_rate=0.99)
-    # opt = optax.adam(sched)
-    if classification:
-        opt = optax.adabelief(init_lr)
-    else:
-        num_steps = trainloader.num_batches * nb_epochs
-        bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
-        sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
-        # sched = init_lr
+    num_steps = trainloader.num_batches * nb_epochs
+    bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
+    sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
-        opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
-        # opt = optax.adabelief(sched)
+    # sched = init_lr
+
+    opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
+    # opt = optax.adabelief(sched)
 
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
@@ -460,15 +509,18 @@ if train:
         losses_epoch.append(loss_epoch)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
-            if classification:
+            if supervision_task=="classification":
                 acc, = aux
                 print(f"    Epoch: {epoch:-5d}      Cross-Ent Loss: {loss_epoch:.6f}      Accuracy: {acc*100:.2f}%", flush=True)
-            else:
+            elif supervision_task=="reconstruction":
                 aux_loss, = aux
                 if use_mse_loss:
                     print(f"    Epoch: {epoch:-5d}      MSELoss: {loss_epoch:.6f}", flush=True)
                 else:
                     print(f"    Epoch: {epoch:-5d}      NLL Loss: {loss_epoch:.6f}", flush=True)
+            else:
+                loss_r, loss_c, acc = aux
+                print(f"    Epoch: {epoch:-5d}      Total Loss: {loss_epoch:.6f}      Reconstruction Loss: {loss_r:.6f}      Classification Loss: {loss_c:.6f}      Accuracy: {acc*100:.2f}%", flush=True)
 
             eqx.tree_serialise_leaves(checkpoints_folder+f"model_{epoch}.eqx", model)
             np.save(run_folder+"losses.npy", np.array(losses))
@@ -605,22 +657,36 @@ for i, batch in enumerate(testloader):
     test_key, _ = jax.random.split(test_key)
     (X_true, times), X_labels = batch
 
-    if classification:
+    if supervision_task == "classification":
         X_classes = model(X_true, times, (alpha, test_key))
         pred_logits = X_classes[:, -1, :]   ## We only care about the last prediction: (batch, num_classes)
         acc = jnp.mean(jnp.argmax(pred_logits, axis=-1) == X_labels)
         accs.append(acc)
 
-    else:
+    elif supervision_task == "reconstruction":
         X_recons = model(X_true, times, (alpha, test_key))
         if not use_mse_loss:
             X_recons = X_recons[:, :, :data_size]
         mse = jnp.mean((X_recons - X_true)**2)
         mses.append(mse)
 
-if classification:
+    else:
+        X_full = model(X_true, times, (alpha, test_key))
+        recons_size = data_size if use_mse_loss else 2*data_size
+        X_recons, X_classes = X_full[:, :, :recons_size], X_full[:, :, recons_size:]
+
+        mse = jnp.mean((X_recons - X_true)**2)
+        mses.append(mse)
+
+        acc = jnp.mean(jnp.argmax(X_classes[:, -1, :], axis=-1) == X_labels)
+        accs.append(acc)
+
+if supervision_task=="classification":
     print(f"Mean accuracy on the test set: {np.mean(accs)*100:.2f}%")
+elif supervision_task=="reconstruction":
+    print(f"Mean MSE on the test set: {np.mean(mses):.6f}")
 else:
+    print(f"Mean accuracy on the test set: {np.mean(accs)*100:.2f}%")
     print(f"Mean MSE on the test set: {np.mean(mses):.6f}")
 
 
@@ -628,7 +694,7 @@ else:
 # %%
 ## Let's visualise the reconstruction of a few samples only based on grounding information. PLot the true and the reconstructed images size by side
 
-if not classification:
+if not supervision_task=="classification":
     ## Set inference mode to True
     model = eqx.tree_at(lambda m:m.inference_mode, model, True)
     visloader = NumpyLoader(testloader.dataset, batch_size=16, shuffle=True)
@@ -640,35 +706,39 @@ if not classification:
     (xs_true, times), labels = batch
     xs_recons = model(xs_true, times, (alpha, test_key))
 
+    if supervision_task != "reconstruction":
+        xs_recons = xs_recons[:, :, :data_size*2]
+
     if not use_mse_loss:
         xs_uncert = xs_recons[:, :, data_size:]
         xs_recons = xs_recons[:, :, :data_size]
 
-    res = 28 // mini_res_mnist
+    width = 28 // mini_res_mnist if dataset=="mnist" else 32 // mini_res_mnist
+    res = (width, width, data_size)
     for i in range(4):
         for j in range(4):
             x = xs_true[i*4+j]
             x_recons = xs_recons[i*4+j]
 
-            if run_mnist:
-                axs[i, nb_cols*j].imshow(x.reshape((res, res)), cmap='gray')
+            if dataset in ["mnist", "cifar"]:
+                axs[i, nb_cols*j].imshow(x.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
             if i==0:
                 axs[i, nb_cols*j].set_title("GT", fontsize=40)
             axs[i, nb_cols*j].axis('off')
 
-            if run_mnist:
-                axs[i, nb_cols*j+1].imshow(x_recons.reshape((res, res)), cmap='gray')
+            if dataset in ["mnist", "cifar"]:
+                axs[i, nb_cols*j+1].imshow(x_recons.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
             if i==0:
                 axs[i, nb_cols*j+1].set_title("Recons", fontsize=40)
             axs[i, nb_cols*j+1].axis('off')
 
-            if run_mnist and not use_mse_loss:
+            if dataset in ["mnist", "cifar"] and not use_mse_loss:
                 x_uncert = xs_uncert[i*4+j]
-                axs[i, nb_cols*j+2].imshow(x_uncert.reshape((res, res)), cmap='gray')
+                axs[i, nb_cols*j+2].imshow(x_uncert.reshape(res), cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
                 axs[i, nb_cols*j+2].axis('off')
