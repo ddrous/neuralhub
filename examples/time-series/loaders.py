@@ -102,7 +102,7 @@ class MNISTDataset(TimeSeriesDataset):
     For the MNIST dataset, where the time series is the pixels of the image, and the example of Trends dataset above
     """
 
-    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0, unit_normalise=False):
+    def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0, unit_normalise=False, fashion=False):
         self.nb_classes = 10
         self.num_steps = (28//mini_res)**2
         self.data_size = 1
@@ -119,9 +119,14 @@ class MNISTDataset(TimeSeriesDataset):
             ]
         )
 
-        data = torchvision.datasets.MNIST(
-            data_dir, train=True if data_split=="train" else False, download=True, transform=tf
-        )
+        if fashion:
+            data = torchvision.datasets.FashionMNIST(
+                data_dir, train=True if data_split=="train" else False, download=True, transform=tf
+            )
+        else:
+            data = torchvision.datasets.MNIST(
+                data_dir, train=True if data_split=="train" else False, download=True, transform=tf
+            )
 
         ## Get all the data in one large batch (to apply the transform)
         dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
@@ -166,12 +171,58 @@ class CIFARDataset(TimeSeriesDataset):
         dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
         # dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=128, shuffle=True)))
 
+        ## Filter and return cats only: class 3
+        dataset = dataset[labels==3]
+        labels = labels[labels==3]
+
         t_eval = np.linspace(0., 1., self.num_steps)
         self.total_envs = dataset.shape[0]
 
         super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
 
+
+
+
+
+# class OmniglotDataset(TimeSeriesDataset):
+#     """
+#     Omniglot for one shot learning
+#     """
+
+#     def __init__(self, data_dir, data_split, mini_res=4, traj_prop=1.0, unit_normalise=False):
+#         self.nb_classes = 10
+#         self.num_steps = (32//mini_res)**2
+#         self.data_size = 3
+#         self.mini_res = mini_res
+
+#         self.traj_prop = traj_prop
+
+#         tf = transforms.Compose(
+#             [
+#                 transforms.ToTensor(),
+#                 transforms.Normalize(mean=0.5, std=0.5) if not unit_normalise else transforms.Lambda(lambda x: x),
+#                 transforms.Lambda(lambda x: x[:, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
+#                 transforms.Lambda(lambda x: x.reshape(self.data_size, self.num_steps).t()),
+#             ]
+#         )
+
+#         data = torchvision.datasets.CIFAR10(
+#             data_dir, train=True if data_split=="train" else False, download=True, transform=tf
+#         )
+
+#         ## Get all the data in one large batch (to apply the transform)
+#         dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
+#         # dataset, labels = next(iter(torch.utils.data.DataLoader(data, batch_size=128, shuffle=True)))
+
+#         ## Filter and return cats only: class 3
+#         dataset = dataset[labels==3]
+#         labels = labels[labels==3]
+
+#         t_eval = np.linspace(0., 1., self.num_steps)
+#         self.total_envs = dataset.shape[0]
+
+#         super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
 
 
@@ -987,3 +1038,49 @@ if __name__ == "__main__":
     images, labels = next(dataiter)
     print(images.shape)
     print(labels.shape)
+
+
+
+
+
+
+
+### Testset
+
+
+# """Splits the google speech commands into train, validation and test sets.
+# """
+
+# import os
+# import shutil
+# import argparse
+
+# def move_files(src_folder, to_folder, list_file):
+#     with open(list_file) as f:
+#         for line in f.readlines():
+#             line = line.rstrip()
+#             dirname = os.path.dirname(line)
+#             dest = os.path.join(to_folder, dirname)
+#             if not os.path.exists(dest):
+#                 os.mkdir(dest)
+#             shutil.move(os.path.join(src_folder, line), dest)
+
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser(description='Split google commands train dataset.')
+#     parser.add_argument('root', type=str, help='the path to the root folder of te google commands train dataset.')
+#     args = parser.parse_args()
+
+#     audio_folder = os.path.join(args.root, 'audio')
+#     validation_path = os.path.join(audio_folder, 'validation_list.txt')
+#     test_path = os.path.join(audio_folder, 'testing_list.txt')
+
+#     valid_folder = os.path.join(args.root, 'valid')
+#     test_folder = os.path.join(args.root, 'test')
+#     train_folder = os.path.join(args.root, 'train')
+#     os.mkdir(valid_folder)
+#     os.mkdir(test_folder)
+
+#     move_files(audio_folder, test_folder, test_path)
+#     move_files(audio_folder, valid_folder, validation_path)
+#     os.rename(audio_folder, train_folder)

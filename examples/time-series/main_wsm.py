@@ -66,11 +66,11 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 1
-nb_epochs = 10*9*4*2
+nb_epochs = 10*9*10
 batch_size = 128*2
-unit_normalise = True
+unit_normalise = False
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
-autoregressive_inference = False    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
+autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
@@ -84,7 +84,7 @@ print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
 data_folder = "./data/" if train else "../../data/"
-dataset = "cifar"               ## mnist, cifar, or trends
+dataset = "mnist_fashion"               ## mnist, cifar, or trends, mnist_fashion
 
 # run_folder = "./runs/250208-184005-Test/" if train else "./"
 run_folder = None if train else "./"
@@ -103,14 +103,15 @@ os.system(f"cp loaders.py {run_folder}");
 
 #%%
 
-if dataset=="mnist":
+if dataset in ["mnist", "mnist_fashion"]:
     # ### MNIST Classification (From Sacha Rush's Annotated S4)
     print(" #### MNIST Dataset ####")
-    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise), 
+    fashion = dataset=="mnist_fashion"
+    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise, fashion=fashion), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise),
+    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise, fashion=fashion),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
@@ -150,12 +151,12 @@ print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
 ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
 fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
 colors = ['r', 'g', 'b', 'c', 'm', 'y']
-width = 28 // mini_res_mnist if dataset=="mnist" else 32 // mini_res_mnist
+width = 28 // mini_res_mnist if dataset in ["mnist", "mnist_fashion"] else 32 // mini_res_mnist
 res = (width, width, data_size)
 for i in range(4):
     for j in range(4):
         idx = np.random.randint(0, images.shape[0])
-        if dataset in ["mnist", "cifar"]:
+        if dataset in ["mnist", "cifar", "mnist_fashion"]:
             axs[i, j].imshow(images[idx].reshape(res), cmap='gray')
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
@@ -723,14 +724,14 @@ if not supervision_task=="classification":
         xs_uncert = xs_recons[:, :, data_size:]
         xs_recons = xs_recons[:, :, :data_size]
 
-    width = 28 // mini_res_mnist if dataset=="mnist" else 32 // mini_res_mnist
+    width = 28 // mini_res_mnist if dataset in ["mnist", "mnist_fashion"] else 32 // mini_res_mnist
     res = (width, width, data_size)
     for i in range(4):
         for j in range(4):
             x = xs_true[i*4+j]
             x_recons = xs_recons[i*4+j]
 
-            if dataset in ["mnist", "cifar"]:
+            if dataset in ["mnist", "cifar", "mnist_fashion"]:
                 axs[i, nb_cols*j].imshow(x.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
@@ -738,7 +739,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j].set_title("GT", fontsize=40)
             axs[i, nb_cols*j].axis('off')
 
-            if dataset in ["mnist", "cifar"]:
+            if dataset in ["mnist", "cifar", "mnist_fashion"]:
                 axs[i, nb_cols*j+1].imshow(x_recons.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
@@ -746,7 +747,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j+1].set_title("Recons", fontsize=40)
             axs[i, nb_cols*j+1].axis('off')
 
-            if dataset in ["mnist", "cifar"] and not use_mse_loss:
+            if dataset in ["mnist", "cifar", "mnist_fashion"] and not use_mse_loss:
                 x_uncert = xs_uncert[i*4+j]
                 axs[i, nb_cols*j+2].imshow(x_uncert.reshape(res), cmap='gray')
                 if i==0:
