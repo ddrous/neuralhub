@@ -12,6 +12,10 @@
 # - [] Add delta_t in front of the A matrix
 
 #%%
+
+%load_ext autoreload
+%autoreload 2
+
 import jax
 
 print("Available devices:", jax.devices())
@@ -38,7 +42,7 @@ import equinox as eqx
 
 # import matplotlib.pyplot as plt
 from neuralhub import *
-from loaders import TrendsDataset, MNISTDataset, CIFARDataset
+from loaders import TrendsDataset, MNISTDataset, CIFARDataset, CelebADataset
 from selfmod import NumpyLoader, setup_run_folder, torch
 
 import optax
@@ -47,6 +51,8 @@ import time
 ## Set seaborn style to talk
 import seaborn as sb
 sb.set_context("poster")
+
+
 
 #%%
 
@@ -66,7 +72,7 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 1
-nb_epochs = 10*9*10
+nb_epochs = 120
 batch_size = 128*2
 unit_normalise = False
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
@@ -83,8 +89,9 @@ use_mse_loss = False
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
+dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
-dataset = "mnist_fashion"               ## mnist, cifar, or trends, mnist_fashion
+image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
 # run_folder = "./runs/250208-184005-Test/" if train else "./"
 run_folder = None if train else "./"
@@ -107,29 +114,45 @@ if dataset in ["mnist", "mnist_fashion"]:
     # ### MNIST Classification (From Sacha Rush's Annotated S4)
     print(" #### MNIST Dataset ####")
     fashion = dataset=="mnist_fashion"
-    trainloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise, fashion=fashion), 
+    trainloader = NumpyLoader(MNISTDataset(data_folder, data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise, fashion=fashion), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(MNISTDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise, fashion=fashion),
+    testloader = NumpyLoader(MNISTDataset(data_folder, data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise, fashion=fashion),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
 elif dataset=="cifar":
-    # ### MNIST Classification (From Sacha Rush's Annotated S4)
-    print(" #### MNIST Dataset ####")
-    trainloader = NumpyLoader(CIFARDataset(data_folder+"data/", data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise), 
+    print(" #### CIFAR Dataset ####")
+    trainloader = NumpyLoader(CIFARDataset(data_folder, data_split="train", mini_res=mini_res_mnist, traj_prop=traj_train_prop, unit_normalise=unit_normalise), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(CIFARDataset(data_folder+"data/", data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise),
+    testloader = NumpyLoader(CIFARDataset(data_folder, data_split="test", mini_res=mini_res_mnist, traj_prop=1.0, unit_normalise=unit_normalise),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
+elif dataset=="celeba":
+    print(" #### CelebA Dataset ####")
+    resolution = (32, 32)
+    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True), 
+                              batch_size=batch_size, 
+                              shuffle=True, 
+                              num_workers=24)
+    testloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="test", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True),
+                                batch_size=batch_size, 
+                                shuffle=True, 
+                                num_workers=24)
+    nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
+    print("Training sequence length:", seq_length)
+
+    ## CelebA is normalised by default  TODO:
+    unit_normalise = True
+
 else:
     print(" #### Trends (Synthetic Control) Dataset ####")
     ## ======= below to run the easy Trends dataset instead!
@@ -146,7 +169,7 @@ batch = next(iter(testloader))
 print("Images shape:", images.shape)
 print("Labels shape:", labels.shape)
 
-print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))  
+print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
 
 ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
 fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
@@ -156,7 +179,7 @@ res = (width, width, data_size)
 for i in range(4):
     for j in range(4):
         idx = np.random.randint(0, images.shape[0])
-        if dataset in ["mnist", "cifar", "mnist_fashion"]:
+        if dataset in image_datasets:
             axs[i, j].imshow(images[idx].reshape(res), cmap='gray')
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
@@ -731,7 +754,7 @@ if not supervision_task=="classification":
             x = xs_true[i*4+j]
             x_recons = xs_recons[i*4+j]
 
-            if dataset in ["mnist", "cifar", "mnist_fashion"]:
+            if dataset in image_datasets:
                 axs[i, nb_cols*j].imshow(x.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
@@ -739,7 +762,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j].set_title("GT", fontsize=40)
             axs[i, nb_cols*j].axis('off')
 
-            if dataset in ["mnist", "cifar", "mnist_fashion"]:
+            if dataset in image_datasets:
                 axs[i, nb_cols*j+1].imshow(x_recons.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
@@ -747,7 +770,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j+1].set_title("Recons", fontsize=40)
             axs[i, nb_cols*j+1].axis('off')
 
-            if dataset in ["mnist", "cifar", "mnist_fashion"] and not use_mse_loss:
+            if dataset in image_datasets and not use_mse_loss:
                 x_uncert = xs_uncert[i*4+j]
                 axs[i, nb_cols*j+2].imshow(x_uncert.reshape(res), cmap='gray')
                 if i==0:
