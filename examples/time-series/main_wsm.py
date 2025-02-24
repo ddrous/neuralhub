@@ -13,8 +13,8 @@
 
 #%%
 
-%load_ext autoreload
-%autoreload 2
+# %load_ext autoreload
+# %autoreload 2
 
 import jax
 
@@ -73,7 +73,7 @@ init_lr = 1e-4
 ## Training hps
 print_every = 1
 nb_epochs = 120
-batch_size = 128*2
+batch_size = 64*8
 unit_normalise = False
 grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
@@ -138,7 +138,7 @@ elif dataset=="cifar":
     print("Training sequence length:", seq_length)
 elif dataset=="celeba":
     print(" #### CelebA Dataset ####")
-    resolution = (32, 32)
+    resolution = (28, 28)
     trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True), 
                               batch_size=batch_size, 
                               shuffle=True, 
@@ -174,7 +174,18 @@ print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
 ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
 fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
 colors = ['r', 'g', 'b', 'c', 'm', 'y']
-width = 28 // mini_res_mnist if dataset in ["mnist", "mnist_fashion"] else 32 // mini_res_mnist
+
+def get_width(dataset):
+    if dataset in ["mnist", "mnist_fashion"]:
+        return 28 // mini_res_mnist
+    elif dataset=="cifar":
+        return 32 // mini_res_mnist
+    elif dataset=="celeba":
+        return resolution[0]
+    else:
+        return 32
+
+width = get_width(dataset)
 res = (width, width, data_size)
 for i in range(4):
     for j in range(4):
@@ -747,7 +758,7 @@ if not supervision_task=="classification":
         xs_uncert = xs_recons[:, :, data_size:]
         xs_recons = xs_recons[:, :, :data_size]
 
-    width = 28 // mini_res_mnist if dataset in ["mnist", "mnist_fashion"] else 32 // mini_res_mnist
+    width = get_width(dataset)
     res = (width, width, data_size)
     for i in range(4):
         for j in range(4):
