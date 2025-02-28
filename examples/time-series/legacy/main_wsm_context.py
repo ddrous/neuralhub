@@ -43,7 +43,7 @@ import equinox as eqx
 # import matplotlib.pyplot as plt
 from neuralhub import *
 from loaders import TrendsDataset, MNISTDataset, CIFARDataset, CelebADataset
-from selfmod import NumpyLoader, setup_run_folder, torch
+from selfmod import NumpyLoader, setup_run_folder, torch, xavier_uniform
 
 import optax
 import time
@@ -56,7 +56,7 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -72,10 +72,10 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 1
-nb_epochs = 72
-batch_size = 64*1
+nb_epochs = 60
+batch_size = 64*2
 unit_normalise = False
-grounding_length = 100       ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
@@ -86,11 +86,11 @@ weights_lim = 5e-1         ## Limit the weights of the root model to this value
 nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (32, 32)
+context_size = 24
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
+dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -139,16 +139,20 @@ elif dataset=="cifar":
     print("Training sequence length:", seq_length)
 elif dataset=="celeba":
     print(" #### CelebA Dataset ####")
-    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=unit_normalise), 
+    resolution = (28, 28)
+    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="test", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=unit_normalise),
+    testloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="test", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
+
+    ## CelebA is normalised by default  TODO:
+    unit_normalise = True
 
 else:
     print(" #### Trends (Synthetic Control) Dataset ####")
@@ -188,10 +192,7 @@ for i in range(4):
     for j in range(4):
         idx = np.random.randint(0, images.shape[0])
         if dataset in image_datasets:
-            to_plot = images[idx].reshape(res)
-            if not unit_normalise:  ## Images are between -1 and 1
-                to_plot = (to_plot + 1) / 2
-            axs[i, j].imshow(to_plot, cmap='gray')
+            axs[i, j].imshow(images[idx].reshape(res), cmap='gray')
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
         axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
@@ -223,8 +224,9 @@ class Ses2Seq(eqx.Module):
     """ Sequence to sequence model which takes in an initial latent space """
     As: jnp.ndarray
     Bs: jnp.ndarray
+    Cs: jnp.ndarray     ## C and D are for low-rank adaptation
+    Ds: jnp.ndarray
     thetas: jnp.ndarray
-    # t: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -261,28 +263,68 @@ class Ses2Seq(eqx.Module):
         root_utils = []
         As = []
         Bs = []
+        Cs = []
+        Ds = []
         for i in range(nb_rnn_layers):
             root = RootMLP(1, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
-            thetas.append(weights)
+            # thetas.append(weights)
+            thetas.append(params)
 
-            latent_size = weights.shape[0]
-            A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
+            # latent_size = weights.shape[0]
+            A = jnp.eye(context_size, context_size) if full_matrix_A else jnp.ones((context_size,))
             if use_theta_prev:
                 A = A*0.
             As.append(A)
-            Bs.append(jnp.zeros((latent_size, B_out_shapes[i])))
+            Bs.append(jnp.zeros((context_size, B_out_shapes[i])))
+
+            ## Initialise C and D with Xavier-uniform ## Copy from Self-Mod code where C=A and D=B
+            r = context_size
+            def generate_weights(leaf, key, side="left"):
+                """ We form A, B, c such that A@c@B is the weight matrix """
+
+                if leaf is not None:
+                    if leaf.ndim == 2:
+                        d_out, d_in = leaf.shape
+                        A = xavier_uniform(key, (d_out, r))
+                        B = xavier_uniform(key, (r, d_in))
+                        if side=="left":
+                            return A
+                        elif side=="right":
+                            return B
+                        else:
+                            raise ValueError("Side not recognised")
+                    elif leaf.ndim == 1:
+                        d_out = leaf.shape[0]
+                        A = xavier_uniform(key, (d_out, r))
+                        B = None
+                        if side=="left":
+                            return A
+                        elif side=="right":
+                            return B
+                        else:
+                            raise ValueError("Side not recognised")
+
+            flat_keys = jax.random.split(keys[2], num=treedef.num_leaves)
+            root_keys = jax.tree.unflatten(treedef, flat_keys)
+
+            left_weights = jax.tree.map(partial(generate_weights, side="left"), params, root_keys)
+            right_weights = jax.tree.map(partial(generate_weights, side="right"), params, root_keys)
+
+            Cs.append(left_weights)
+            Ds.append(right_weights)
 
         self.root_utils = root_utils
         self.thetas = thetas
         self.As = As
         self.Bs = Bs
+        self.Cs = Cs
+        self.Ds = Ds
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
-        # self.t = jnp.array([0.0])
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -304,13 +346,16 @@ class Ses2Seq(eqx.Module):
 
                 ## Do a partial on f
                 def f(carry, input_signal):
-                    thet, x_prev, t_prev, x_prev_prev, step = carry
+                    xi, x_prev, t_prev, x_prev_prev, xi_prev, step = carry
                     x_true, t_curr, key_ = input_signal
                     delta_t = t_curr - t_prev
 
                     A = self.As[i]
                     B = self.Bs[i]
                     root_utils = self.root_utils[i]
+                    C = self.Cs[i]
+                    D = self.Ds[i]
+                    params = self.thetas[i]
 
                     if supervision_task=="classification":
                         x_t = x_true
@@ -331,24 +376,28 @@ class Ses2Seq(eqx.Module):
                     if full_matrix_A:
                         if use_theta_prev:
                             # thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
-                            raise NotImplementedError("Full matrix A with theta_prev not implemented yet")
+                            raise NotImplementedError("Not implemented yet")
                         else:
-                            # thet_next = A@(thet) + B@(x_t - x_prev_prev)     ## Promising !
-                            # thet_next = A@(thet) + B@(x_t)     ## Promising !
-                            thet_next = A@thet + B@(x_t - x_prev_prev)     ## Promising !
+                            xi_next = A@xi + B@(x_t - x_prev_prev)
+
                     else:
-                        thet_next = A*thet + B@(x_t - x_prev_prev)
+                        # thet_next = A*thet + delta_t*B@x_t
+                        raise NotImplementedError("Not implemented yet")
 
                     ## 2. Decode the latent space
-                    thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
+                    # thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
                     # jax.debug.print("Smallest and biggest values in thet_next: {} {}", jnp.min(thet_next), jnp.max(thet_next))
 
-                    shapes, treedef, static, _ = root_utils
-                    params = unflatten_pytree(thet_next, shapes, treedef)
-                    root_fun = eqx.combine(params, static)
-                    # ## Clip t between 0 and 1
-                    # t_curr = jnp.clip(self.t, 0., 1.)
-                    y_next = root_fun(t_curr + delta_t)
+                    def multiplication_fn(W, A, B):
+                        if W.ndim == 2:
+                            return W + A @ jnp.diag(xi_next) @ B
+                        elif W.ndim == 1:
+                            return W + A @ xi_next
+
+                    _, _, static, _ = root_utils
+                    adapted_params = jax.tree.map(multiplication_fn, params, C, D)
+                    root_fun = eqx.combine(adapted_params, static)
+                    y_next = root_fun(t_curr+delta_t)
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -358,10 +407,11 @@ class Ses2Seq(eqx.Module):
                         else:
                             x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, step), (y_next, )
+                    return (xi_next, x_next_mean, t_curr, x_prev, xi, step), (y_next, )
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
+                init_context = jnp.zeros((context_size,))
+                (thet_final, _, _, _, _, _), (xs_, ) = jax.lax.scan(f, (init_context, sup_signal[0], -ts_[1:2], sup_signal[0], init_context, 0), (sup_signal, ts_[:, None], keys))
 
                 if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
                     ### We reconstitute the model, and we apply the model at each step
@@ -393,15 +443,10 @@ model = Ses2Seq(data_size=data_size,
 untrained_model = model
 ## Print the total number of learnable paramters in the model components
 print(f"Number of learnable parameters in the root network: {count_params((model.thetas,))/1000:3.1f} k")
-print(f"Number of learnable parameters in the seqtoseq: {count_params((model.As, model.Bs))/1000:3.1f} k")
+print(f"Number of learnable parameters in the seqtoseq: {count_params((model.As, model.Bs, model.Cs, model.Ds))/1000:3.1f} k")
 print(f"Number of learnable parameters in the model: {count_params(model)/1000:3.1f} k")
 
 # %%
-
-def enforce_positivity(x):
-    # return jnp.clip(jax.nn.softplus(x), 1e-6, 1)          ## Original code. This works! But may be optimal with tanh activation because softplus(-1) = 0.31 
-    # return jnp.clip(jnp.abs(x), 1e-6, 1)                  ## Try this as well.
-    return jnp.clip((x+1.)/2., 1e-6, 1)                     ## If tanh activation was used
 
 def loss_fn(model, batch, utils):
     (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
@@ -451,8 +496,7 @@ def loss_fn(model, batch, utils):
             loss_r = optax.l2_loss(X_recons_, X_true_)
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
-            # stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
             loss_r = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
 
         loss = jnp.mean(loss_r)
@@ -476,8 +520,7 @@ def loss_fn(model, batch, utils):
             loss_r = jnp.mean(losses)
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
-
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
             losses = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
             print("Losses shape:", losses.shape, stds.shape, means.shape, X_true_.shape)
             loss_r = jnp.mean(losses)
@@ -531,7 +574,6 @@ if train:
     bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
     sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
-    # sched = optax.linear_schedule(init_value=init_lr, end_value=init_lr/100, transition_steps=num_steps)
     # sched = init_lr
 
     opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
@@ -657,52 +699,52 @@ else: ## Attempt to parse and collect losses from the nohup.log file
 
 # %%
 
-## Print the value of alpha
-# print("Alpha before training: (no teacher forcing)", 0.)
-# print("Alpha after training:", model.alpha)
+# ## Print the value of alpha
+# # print("Alpha before training: (no teacher forcing)", 0.)
+# # print("Alpha after training:", model.alpha)
 
-## Let's visualise the distribution of values along the main diagonal of A and theta
-fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-if full_matrix_A:
-    axs[0].hist(jnp.diag(model.As[0], k=0), bins=100)
-else:
-    axs[0].hist(model.As[0], bins=100)
+# ## Let's visualise the distribution of values along the main diagonal of A and theta
+# fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+# if full_matrix_A:
+#     axs[0].hist(jnp.diag(model.As[0], k=0), bins=100)
+# else:
+#     axs[0].hist(model.As[0], bins=100)
 
-axs[0].set_title("Histogram of diagonal values of A (first layer)")
+# axs[0].set_title("Histogram of diagonal values of A (first layer)")
 
-axs[1].hist(model.thetas[0], bins=100, label="After Training")
-axs[1].hist(untrained_model.thetas[0], bins=100, alpha=0.5, label="Before Training", color='r')
-axs[1].set_title(r"Histogram of $\theta_0$ values")
-plt.legend();
-plt.draw();
-plt.savefig(run_folder+"A_theta_histograms.png", dpi=100, bbox_inches='tight')
+# axs[1].hist(model.thetas[0], bins=100, label="After Training")
+# axs[1].hist(untrained_model.thetas[0], bins=100, alpha=0.5, label="Before Training", color='r')
+# axs[1].set_title(r"Histogram of $\theta_0$ values")
+# plt.legend();
+# plt.draw();
+# plt.savefig(run_folder+"A_theta_histograms.png", dpi=100, bbox_inches='tight')
 
-## PLot all values of B in a lineplot (all dimensions)
-if not isinstance(model.Bs[0], eqx.nn.Linear):
-    fig, ax = plt.subplots(1, 1, figsize=(10, 4))
-    ax.plot(model.Bs[0], label="Values of B")
-    ax.set_title("Values of B")
-    ax.set_xlabel("Dimension")
-    plt.draw();
-    plt.savefig(run_folder+"B_values.png", dpi=100, bbox_inches='tight')
+# ## PLot all values of B in a lineplot (all dimensions)
+# if not isinstance(model.Bs[0], eqx.nn.Linear):
+#     fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+#     ax.plot(model.Bs[0], label="Values of B")
+#     ax.set_title("Values of B")
+#     ax.set_xlabel("Dimension")
+#     plt.draw();
+#     plt.savefig(run_folder+"B_values.png", dpi=100, bbox_inches='tight')
 
-if full_matrix_A:
-    ## Print the untrained and trained matrices A as imshows with same range
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-    # min_val = min(jnp.min(model.A), jnp.min(untrained_model.A))
-    # max_val = max(jnp.max(model.A), jnp.max(untrained_model.A))
-    min_val = -0.00
-    max_val = 0.003
+# if full_matrix_A:
+#     ## Print the untrained and trained matrices A as imshows with same range
+#     fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+#     # min_val = min(jnp.min(model.A), jnp.min(untrained_model.A))
+#     # max_val = max(jnp.max(model.A), jnp.max(untrained_model.A))
+#     min_val = -0.00
+#     max_val = 0.003
 
-    img = axs[0].imshow(untrained_model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
-    axs[0].set_title("Untrained A")
-    plt.colorbar(img, ax=axs[0], shrink=0.7)
+#     img = axs[0].imshow(untrained_model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
+#     axs[0].set_title("Untrained A")
+#     plt.colorbar(img, ax=axs[0], shrink=0.7)
 
-    img = axs[1].imshow(model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
-    axs[1].set_title("Trained A")
-    plt.colorbar(img, ax=axs[1], shrink=0.7)
-    plt.draw();
-    plt.savefig(run_folder+"A_matrices.png", dpi=100, bbox_inches='tight')
+#     img = axs[1].imshow(model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
+#     axs[1].set_title("Trained A")
+#     plt.colorbar(img, ax=axs[1], shrink=0.7)
+#     plt.draw();
+#     plt.savefig(run_folder+"A_matrices.png", dpi=100, bbox_inches='tight')
 
 
 
@@ -779,10 +821,7 @@ if not supervision_task=="classification":
             x_recons = xs_recons[i*4+j]
 
             if dataset in image_datasets:
-                to_plot = x.reshape(res)
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                axs[i, nb_cols*j].imshow(to_plot, cmap='gray')
+                axs[i, nb_cols*j].imshow(x.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
             if i==0:
@@ -790,10 +829,7 @@ if not supervision_task=="classification":
             axs[i, nb_cols*j].axis('off')
 
             if dataset in image_datasets:
-                to_plot = x_recons.reshape(res)
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                axs[i, nb_cols*j+1].imshow(to_plot, cmap='gray')
+                axs[i, nb_cols*j+1].imshow(x_recons.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
             if i==0:
@@ -801,12 +837,8 @@ if not supervision_task=="classification":
             axs[i, nb_cols*j+1].axis('off')
 
             if dataset in image_datasets and not use_mse_loss:
-                to_plot = xs_uncert[i*4+j].reshape(res)
-                print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                    # to_plot = jnp.abs(to_plot)
-                    axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
+                x_uncert = xs_uncert[i*4+j]
+                axs[i, nb_cols*j+2].imshow(x_uncert.reshape(res), cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
                 axs[i, nb_cols*j+2].axis('off')

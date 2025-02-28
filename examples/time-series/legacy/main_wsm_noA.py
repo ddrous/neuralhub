@@ -56,7 +56,7 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2025
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -72,10 +72,10 @@ init_lr = 1e-4
 
 ## Training hps
 print_every = 1
-nb_epochs = 72
-batch_size = 64*1
+nb_epochs = 200
+batch_size = 64*2
 unit_normalise = False
-grounding_length = 100       ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
@@ -86,11 +86,10 @@ weights_lim = 5e-1         ## Limit the weights of the root model to this value
 nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (32, 32)
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
+dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -139,16 +138,20 @@ elif dataset=="cifar":
     print("Training sequence length:", seq_length)
 elif dataset=="celeba":
     print(" #### CelebA Dataset ####")
-    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=unit_normalise), 
+    resolution = (28, 28)
+    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="test", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=unit_normalise),
+    testloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="test", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True),
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
+
+    ## CelebA is normalised by default  TODO:
+    unit_normalise = True
 
 else:
     print(" #### Trends (Synthetic Control) Dataset ####")
@@ -188,16 +191,35 @@ for i in range(4):
     for j in range(4):
         idx = np.random.randint(0, images.shape[0])
         if dataset in image_datasets:
-            to_plot = images[idx].reshape(res)
-            if not unit_normalise:  ## Images are between -1 and 1
-                to_plot = (to_plot + 1) / 2
-            axs[i, j].imshow(to_plot, cmap='gray')
+            axs[i, j].imshow(images[idx].reshape(res), cmap='gray')
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
         axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
         axs[i, j].axis('off')
 
 # %%
+
+
+def exponential_decay(step, max_steps=500):
+    """
+    Returns a value that exponentially decays from 1 to nearly 0
+    
+    Args:
+        step: Current step (0 to max_steps)
+        max_steps: The number of steps over which to decay (default: 500)
+    
+    Returns:
+        A value between 0 and 1 that decays exponentially
+    """
+    # Ensure step is within bounds
+    step = jnp.clip(step, 0, max_steps)
+    
+    # Calculate decay rate to reach ~1e-5 at max_steps
+    decay_rate = -jnp.log(1e-5) / max_steps
+    
+    # Calculate and return the exponentially decayed value
+    return jnp.exp(-decay_rate * step)
+
 
 class RootMLP(eqx.Module):
     network: eqx.Module
@@ -221,10 +243,8 @@ class RootMLP(eqx.Module):
 # ## Define model and loss function for the learner
 class Ses2Seq(eqx.Module):
     """ Sequence to sequence model which takes in an initial latent space """
-    As: jnp.ndarray
     Bs: jnp.ndarray
     thetas: jnp.ndarray
-    # t: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -259,7 +279,6 @@ class Ses2Seq(eqx.Module):
         keys = jax.random.split(keys[2], num=nb_rnn_layers)
         thetas = []
         root_utils = []
-        As = []
         Bs = []
         for i in range(nb_rnn_layers):
             root = RootMLP(1, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
@@ -269,20 +288,14 @@ class Ses2Seq(eqx.Module):
             thetas.append(weights)
 
             latent_size = weights.shape[0]
-            A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
-            if use_theta_prev:
-                A = A*0.
-            As.append(A)
             Bs.append(jnp.zeros((latent_size, B_out_shapes[i])))
 
         self.root_utils = root_utils
         self.thetas = thetas
-        self.As = As
         self.Bs = Bs
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
-        # self.t = jnp.array([0.0])
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -304,11 +317,10 @@ class Ses2Seq(eqx.Module):
 
                 ## Do a partial on f
                 def f(carry, input_signal):
-                    thet, x_prev, t_prev, x_prev_prev, step = carry
+                    thet, x_prev, t_prev, x_prev_prev, thet_prev, step = carry
                     x_true, t_curr, key_ = input_signal
                     delta_t = t_curr - t_prev
 
-                    A = self.As[i]
                     B = self.Bs[i]
                     root_utils = self.root_utils[i]
 
@@ -330,14 +342,16 @@ class Ses2Seq(eqx.Module):
 
                     if full_matrix_A:
                         if use_theta_prev:
-                            # thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
-                            raise NotImplementedError("Full matrix A with theta_prev not implemented yet")
+                            thet_next = thet + thet_prev + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
                         else:
                             # thet_next = A@(thet) + B@(x_t - x_prev_prev)     ## Promising !
                             # thet_next = A@(thet) + B@(x_t)     ## Promising !
-                            thet_next = A@thet + B@(x_t - x_prev_prev)     ## Promising !
+
+                            # thet_next = exponential_decay(step, 500)*A@(thet) + B@(x_t - x_prev_prev)     ## Promising !
+                            thet_next = thet + B@(x_t - x_prev_prev)     ## Promising !
+
                     else:
-                        thet_next = A*thet + B@(x_t - x_prev_prev)
+                        thet_next = thet + B@(x_t - x_prev_prev)
 
                     ## 2. Decode the latent space
                     thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
@@ -346,9 +360,7 @@ class Ses2Seq(eqx.Module):
                     shapes, treedef, static, _ = root_utils
                     params = unflatten_pytree(thet_next, shapes, treedef)
                     root_fun = eqx.combine(params, static)
-                    # ## Clip t between 0 and 1
-                    # t_curr = jnp.clip(self.t, 0., 1.)
-                    y_next = root_fun(t_curr + delta_t)
+                    y_next = root_fun(t_curr+delta_t)
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -358,10 +370,10 @@ class Ses2Seq(eqx.Module):
                         else:
                             x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, step), (y_next, )
+                    return (thet_next, x_next_mean, t_curr, x_prev, thet, step), (y_next, )
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
+                (thet_final, _, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], self.thetas[i], 0), (sup_signal, ts_[:, None], keys))
 
                 if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
                     ### We reconstitute the model, and we apply the model at each step
@@ -393,15 +405,10 @@ model = Ses2Seq(data_size=data_size,
 untrained_model = model
 ## Print the total number of learnable paramters in the model components
 print(f"Number of learnable parameters in the root network: {count_params((model.thetas,))/1000:3.1f} k")
-print(f"Number of learnable parameters in the seqtoseq: {count_params((model.As, model.Bs))/1000:3.1f} k")
+print(f"Number of learnable parameters in the seqtoseq: {count_params((model.Bs, ))/1000:3.1f} k")
 print(f"Number of learnable parameters in the model: {count_params(model)/1000:3.1f} k")
 
 # %%
-
-def enforce_positivity(x):
-    # return jnp.clip(jax.nn.softplus(x), 1e-6, 1)          ## Original code. This works! But may be optimal with tanh activation because softplus(-1) = 0.31 
-    # return jnp.clip(jnp.abs(x), 1e-6, 1)                  ## Try this as well.
-    return jnp.clip((x+1.)/2., 1e-6, 1)                     ## If tanh activation was used
 
 def loss_fn(model, batch, utils):
     (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
@@ -451,8 +458,7 @@ def loss_fn(model, batch, utils):
             loss_r = optax.l2_loss(X_recons_, X_true_)
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
-            # stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
             loss_r = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
 
         loss = jnp.mean(loss_r)
@@ -476,8 +482,7 @@ def loss_fn(model, batch, utils):
             loss_r = jnp.mean(losses)
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
-
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
             losses = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
             print("Losses shape:", losses.shape, stds.shape, means.shape, X_true_.shape)
             loss_r = jnp.mean(losses)
@@ -531,7 +536,6 @@ if train:
     bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
     sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
-    # sched = optax.linear_schedule(init_value=init_lr, end_value=init_lr/100, transition_steps=num_steps)
     # sched = init_lr
 
     opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
@@ -663,10 +667,10 @@ else: ## Attempt to parse and collect losses from the nohup.log file
 
 ## Let's visualise the distribution of values along the main diagonal of A and theta
 fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-if full_matrix_A:
-    axs[0].hist(jnp.diag(model.As[0], k=0), bins=100)
-else:
-    axs[0].hist(model.As[0], bins=100)
+# if full_matrix_A:
+#     axs[0].hist(jnp.diag(model.As[0], k=0), bins=100)
+# else:
+#     axs[0].hist(model.As[0], bins=100)
 
 axs[0].set_title("Histogram of diagonal values of A (first layer)")
 
@@ -779,10 +783,7 @@ if not supervision_task=="classification":
             x_recons = xs_recons[i*4+j]
 
             if dataset in image_datasets:
-                to_plot = x.reshape(res)
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                axs[i, nb_cols*j].imshow(to_plot, cmap='gray')
+                axs[i, nb_cols*j].imshow(x.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
             if i==0:
@@ -790,10 +791,7 @@ if not supervision_task=="classification":
             axs[i, nb_cols*j].axis('off')
 
             if dataset in image_datasets:
-                to_plot = x_recons.reshape(res)
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                axs[i, nb_cols*j+1].imshow(to_plot, cmap='gray')
+                axs[i, nb_cols*j+1].imshow(x_recons.reshape(res), cmap='gray')
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
             if i==0:
@@ -801,12 +799,8 @@ if not supervision_task=="classification":
             axs[i, nb_cols*j+1].axis('off')
 
             if dataset in image_datasets and not use_mse_loss:
-                to_plot = xs_uncert[i*4+j].reshape(res)
-                print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                    # to_plot = jnp.abs(to_plot)
-                    axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
+                x_uncert = xs_uncert[i*4+j]
+                axs[i, nb_cols*j+2].imshow(x_uncert.reshape(res), cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
                 axs[i, nb_cols*j+2].axis('off')
@@ -822,3 +816,5 @@ try:
     __IPYTHON__ ## in a jupyter notebook
 except NameError:
     os.system(f"cp nohup.log {run_folder}")
+
+# %%
