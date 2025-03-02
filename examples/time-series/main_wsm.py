@@ -53,7 +53,6 @@ import seaborn as sb
 sb.set_context("poster")
 
 
-
 #%%
 
 SEED = 2024
@@ -69,13 +68,14 @@ nb_rnn_layers = len(rnn_inner_dims) + 1
 
 ## Optimiser hps
 init_lr = 1e-4
+lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
 print_every = 1
-nb_epochs = 72
-batch_size = 64*1
+nb_epochs = 2*60*8
+batch_size = 64*10
 unit_normalise = False
-grounding_length = 100       ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
@@ -87,10 +87,12 @@ nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruc
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
 resolution = (32, 32)
+forcing_prob = 0.25
+std_lower_bound = 1e-1
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
+dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -189,7 +191,7 @@ for i in range(4):
         idx = np.random.randint(0, images.shape[0])
         if dataset in image_datasets:
             to_plot = images[idx].reshape(res)
-            if not unit_normalise:  ## Images are between -1 and 1
+            if (not unit_normalise) and (dataset=="celeba"):  ## Images are between -1 and 1
                 to_plot = (to_plot + 1) / 2
             axs[i, j].imshow(to_plot, cmap='gray')
         else:
@@ -199,23 +201,46 @@ for i in range(4):
 
 # %%
 
+
+def enforce_absonerange(x):
+    return jax.nn.tanh(x)
+
+def enforce_positivity(x):
+    # return jnp.clip(jax.nn.softplus(x), 1e-6, 1)          ## Original code. This works! But may be optimal with tanh activation because softplus(-1) = 0.31 
+    # return jnp.clip(jnp.abs(x), 1e-6, 1)                  ## Try this as well.
+    # return jnp.clip((x+1.)/2., std_lower_bound, 1)                     ## If tanh activation was used
+    # return jnp.clip(jax.nn.sigmoid(2*x), std_lower_bound, 1)                     ## Good but
+    return jnp.clip(jax.nn.softplus(x), std_lower_bound, None)                     ## As Godron et al.
+
 class RootMLP(eqx.Module):
     network: eqx.Module
     props: any      ## Properties of the network
+    final_activation: any
 
-    def __init__(self, input_dim, output_dims, hidden_size, depth, activation=jax.nn.tanh, key=None):
+    def __init__(self, input_dim, output_dims, hidden_size, depth, activation, key=None):
         key = key if key is not None else jax.random.PRNGKey(0)
         keys = jax.random.split(key, num=2)
 
         final_activation = jax.nn.sigmoid if unit_normalise else jax.nn.tanh
         # final_activation = lambda x:x
-        self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, final_activation=final_activation, key=keys[0])
+        # self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, final_activation=final_activation, key=keys[0])
         # self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
+
+        self.final_activation = final_activation
+        self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
 
         self.props = (input_dim, output_dims, hidden_size, depth, activation)
 
     def __call__(self, t):
-        return self.network(t)
+        out = self.network(t)
+        if supervision_task=="reconstruction" and dataset in image_datasets:
+            if use_mse_loss:
+                return jax.nn.tanh(out)
+            else:
+                recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:])
+                return jnp.concatenate([recons, stds], axis=-1)
+        else:
+            raise NotImplementedError("Only reconstruction image task is supported for now")
 
 
 # ## Define model and loss function for the learner
@@ -322,7 +347,7 @@ class Ses2Seq(eqx.Module):
                                 x_t = x_true
                         else:
                             if train_strategy == "flip_coin":
-                                x_t = jnp.where(jax.random.bernoulli(key_, 0.25), x_true, x_prev)
+                                x_t = jnp.where(jax.random.bernoulli(key_, forcing_prob), x_true, x_prev)
                             elif train_strategy == "teacher_forcing":
                                 x_t = alpha*x_true + (1-alpha)*x_prev
                             else:
@@ -356,9 +381,10 @@ class Ses2Seq(eqx.Module):
                         if not unit_normalise:
                             x_next_mean = y_next[:x_true.shape[0]]
                         else:
-                            x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
+                            # x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
+                            pass
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, step), (y_next, )
+                    return (thet_next, x_next_mean, t_curr, x_prev, step+1), (y_next, )
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
                 (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
@@ -397,11 +423,6 @@ print(f"Number of learnable parameters in the seqtoseq: {count_params((model.As,
 print(f"Number of learnable parameters in the model: {count_params(model)/1000:3.1f} k")
 
 # %%
-
-def enforce_positivity(x):
-    # return jnp.clip(jax.nn.softplus(x), 1e-6, 1)          ## Original code. This works! But may be optimal with tanh activation because softplus(-1) = 0.31 
-    # return jnp.clip(jnp.abs(x), 1e-6, 1)                  ## Try this as well.
-    return jnp.clip((x+1.)/2., 1e-6, 1)                     ## If tanh activation was used
 
 def loss_fn(model, batch, utils):
     (X_true, times), X_labels = batch       ## X: (batch, time, data_size) - Y: (batch, num_classes)
@@ -452,7 +473,8 @@ def loss_fn(model, batch, utils):
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
             # stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), 1e-6, 1)
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            # stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = X_recons_[:, :, data_size:]
             loss_r = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
 
         loss = jnp.mean(loss_r)
@@ -476,8 +498,8 @@ def loss_fn(model, batch, utils):
             loss_r = jnp.mean(losses)
         else: ## Use the negative log likelihood loss
             means = X_recons_[:, :, :data_size]
-
-            stds = enforce_positivity(X_recons_[:, :, data_size:])
+            # stds = enforce_positivity(X_recons_[:, :, data_size:])
+            stds = X_recons_[:, :, data_size:]
             losses = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
             print("Losses shape:", losses.shape, stds.shape, means.shape, X_true_.shape)
             loss_r = jnp.mean(losses)
@@ -495,7 +517,7 @@ def train_step(model, batch, opt_state, key):
 
     (loss, aux_data), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, batch, key)
 
-    updates, opt_state = opt.update(grads, opt_state)
+    updates, opt_state = opt.update(grads, opt_state, model, value=loss)        ## For reduce on plateau loss accumulation
     model = eqx.apply_updates(model, updates)
 
     return model, opt_state, loss, aux_data
@@ -528,13 +550,39 @@ alpha = 1.
 
 if train:
     num_steps = trainloader.num_batches * nb_epochs
-    bd_scales = {int(num_steps/3):0.4, int(num_steps*2/3):0.4}
+    bd_scales = {int(num_steps/3):1.0, int(num_steps*2/3):1.0}
     sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
     # sched = optax.linear_schedule(init_value=init_lr, end_value=init_lr/100, transition_steps=num_steps)
     # sched = init_lr
 
-    opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
+    desired_divisions = int(np.log(1e-3) / np.log(lr_decrease_factor)) + 1
+    # @markdown Number of epochs with no improvement after which learning rate will be reduced:
+    # PATIENCE = max(5, nb_epochs//(2*desired_divisions))  # @param{type:"integer"}
+    PATIENCE = 20  # @param{type:"integer"}
+    # @markdown Number of epochs to wait before resuming normal operation after the learning rate reduction:
+    COOLDOWN = 0  # @param{type:"integer"}
+    # @markdown Factor by which to reduce the learning rate:
+    FACTOR = lr_decrease_factor  # @param{type:"number"}
+    # @markdown Relative tolerance for measuring the new optimum:
+    RTOL = 1e-4  # @param{type:"number"}
+    # @markdown Number of iterations to accumulate an average value:
+    ACCUMULATION_SIZE = 50
+
+    opt = optax.chain(
+        optax.clip(1e-7),
+        optax.adabelief(init_lr),
+        optax.contrib.reduce_on_plateau(
+            patience=PATIENCE,
+            cooldown=COOLDOWN,
+            factor=FACTOR,
+            rtol=RTOL,
+            accumulation_size=ACCUMULATION_SIZE,
+            min_scale=1e-2,
+        ),
+    )
+
+    # opt = optax.chain(optax.clip(1e-7), optax.adabelief(sched))       ## Clip the gradients to 1.0
     # opt = optax.adabelief(sched)
 
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
@@ -543,6 +591,7 @@ if train:
 
     losses = []
     losses_epoch = []
+    lr_scales = []
 
     print(f"\n\n=== Beginning Training ... ===")
     start_time = time.time()
@@ -562,6 +611,7 @@ if train:
             nb_batches += 1
 
             losses.append(loss)
+            lr_scales.append(optax.tree_utils.tree_get(opt_state, "scale"))
 
         loss_epoch = loss_sum/nb_batches
         losses_epoch.append(loss_epoch)
@@ -582,6 +632,7 @@ if train:
 
             eqx.tree_serialise_leaves(checkpoints_folder+f"model_{epoch}.eqx", model)
             np.save(run_folder+"losses.npy", np.array(losses))
+            np.save(run_folder+"lr_scales.npy", np.array(lr_scales))
 
             ## Only save the best model with the lowest loss
             if epoch>0 and loss_epoch<min(losses_epoch[:-1]):
@@ -595,12 +646,14 @@ if train:
     if losses[-1]<min(losses_epoch[:-1]):
         eqx.tree_serialise_leaves(run_folder+"model.eqx", model)
     np.save(run_folder+"losses.npy", np.array(losses))
+    np.save(run_folder+"lr_scales.npy", np.array(lr_scales))
 
 else:
     model = eqx.tree_deserialise_leaves(run_folder+"model.eqx", model)
 
     try:
         losses = np.load(run_folder+"losses.npy")
+        lr_scales = np.load(run_folder+"lr_scales.npy")
     except:
         losses = []
 
@@ -654,6 +707,18 @@ else: ## Attempt to parse and collect losses from the nohup.log file
     except:
         print("No losses found in the nohup.log file")
 
+
+if os.path.exists(run_folder+"lr_scales.npy"):
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+    clean_lr_scales = np.array(lr_scales)
+    train_steps = np.arange(len(lr_scales))
+
+    ax = sbplot(train_steps, clean_lr_scales, label="Learning Rate Scales", x_label='Train Steps', y_label='LR Scale', ax=ax, dark_background=False, y_scale="log");
+
+    plt.legend()
+    plt.draw();
+    plt.savefig(run_folder+"lr_scales.png", dpi=100, bbox_inches='tight')
 
 # %%
 
@@ -780,7 +845,7 @@ if not supervision_task=="classification":
 
             if dataset in image_datasets:
                 to_plot = x.reshape(res)
-                if not unit_normalise:
+                if (not unit_normalise) and (dataset=="celeba"):
                     to_plot = (to_plot + 1) / 2
                 axs[i, nb_cols*j].imshow(to_plot, cmap='gray')
             else:
@@ -791,7 +856,7 @@ if not supervision_task=="classification":
 
             if dataset in image_datasets:
                 to_plot = x_recons.reshape(res)
-                if not unit_normalise:
+                if (not unit_normalise) and (dataset=="celeba"):
                     to_plot = (to_plot + 1) / 2
                 axs[i, nb_cols*j+1].imshow(to_plot, cmap='gray')
             else:
@@ -803,9 +868,12 @@ if not supervision_task=="classification":
             if dataset in image_datasets and not use_mse_loss:
                 to_plot = xs_uncert[i*4+j].reshape(res)
                 print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
-                if not unit_normalise:
-                    to_plot = (to_plot + 1) / 2
-                    # to_plot = jnp.abs(to_plot)
+                # if (not unit_normalise) and (dataset=="celeba"):
+                if (not unit_normalise):
+                    # to_plot = (to_plot + 1) / 2
+                    # to_plot = enforce_positivity(to_plot)
+                    ## Renormalise the uncertainty to be between 0 and 1
+                    to_plot = (to_plot - jnp.min(to_plot)) / (jnp.max(to_plot) - jnp.min(to_plot))
                     axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
