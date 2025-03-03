@@ -76,3 +76,5 @@ examples/time-series/wandb/*
 !examples/time-series/runs/250215-020741-HyperGenius*
 !examples/time-series/runs/250215-020741-HyperGenius*
 !examples/time-series/runs/250302-134550-ExaGenius*
+!examples/time-series/runs/250303-164950-PetaGenius*
+!examples/time-series/runs/250303-190002-SuperCelebA*

@@ -61,8 +61,8 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-mlp_hidden_size = 16*2
-mlp_depth = 2
+mlp_hidden_size = 24*1
+mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
 
@@ -72,27 +72,27 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
 print_every = 1
-nb_epochs = 2*60*8
-batch_size = 64*10
+nb_epochs = 2*60*4
+batch_size = 64*8
 unit_normalise = False
-grounding_length = 300       ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 500          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
-full_matrix_A = True        ## Whether to use a full matrix A or a diagonal one
-use_theta_prev = False      ## Whether to use the previous pevious theta in the computation of the next one
+full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
+use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
 mini_res_mnist = 1
-traj_train_prop = 1.0       ## Proportion of steps to sample to train each time series
-weights_lim = 5e-1         ## Limit the weights of the root model to this value
-nb_recons_loss_steps = 40        ## Number of steps to sample for the reconstruction loss
+traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
+weights_lim = 5e-1              ## Limit the weights of the root model to this value
+nb_recons_loss_steps = 400        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
 resolution = (32, 32)
-forcing_prob = 0.25
-std_lower_bound = 1e-1
+forcing_prob = 0.15
+std_lower_bound = 5e-1
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
+dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -239,8 +239,10 @@ class RootMLP(eqx.Module):
             else:
                 recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:])
                 return jnp.concatenate([recons, stds], axis=-1)
+        elif supervision_task=="classification":
+            return out  ## Softmax is applied in the loss function
         else:
-            raise NotImplementedError("Only reconstruction image task is supported for now")
+            raise NotImplementedError("Not supported for now")
 
 
 # ## Define model and loss function for the learner
