@@ -92,7 +92,7 @@ forcing_prob = 0.15
 std_lower_bound = 1e-4              ## Let's optimise the lower bound
 print(f"==== {supervision_task.capitalize()} Task ====")
 
-train = True
+train = False
 dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
@@ -693,7 +693,7 @@ if os.path.exists(run_folder+"losses.npy"):
 
     ax = sbplot(epochs, clean_losses, label="All losses", x_label='Train Steps', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
 
-    clean_losses = np.where(clean_losses<np.percentile(clean_losses, 96), clean_losses, np.nan)
+    clean_losses = np.where(clean_losses<np.percentile(clean_losses, 86), clean_losses, np.nan)
     ## Plot a second plot with the outliers removed
     ax2 = sbplot(epochs, clean_losses, label="96th Percentile", x_label='Train Steps', y_label='Loss', ax=ax2, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
 

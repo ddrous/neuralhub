@@ -73,9 +73,9 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 ## Training hps
 print_every = 1
 nb_epochs = 2*60*4
-batch_size = 64*2
+batch_size = 64*2*16
 unit_normalise = False
-grounding_length = 2150          ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 150          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
@@ -83,16 +83,16 @@ supervision_task = "reconstruction"       ## True for classification, reconstruc
 mini_res_mnist = 1
 traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
 weights_lim = 5e+2              ## Limit the weights of the root model to this value
-weights_clip_scale = 2.         ## kappa from 
+weights_clip_scale = 2.         ## kappa from Weight Clipping paper
 nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (64, 64)
+resolution = (16, 16)
 forcing_prob = 0.15
 std_lower_bound = 1e-4              ## Let's optimise the lower bound
 print(f"==== {supervision_task.capitalize()} Task ====")
 
-train = True
+train = False
 dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
@@ -693,7 +693,7 @@ if os.path.exists(run_folder+"losses.npy"):
 
     ax = sbplot(epochs, clean_losses, label="All losses", x_label='Train Steps', y_label='Loss', ax=ax, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
 
-    clean_losses = np.where(clean_losses<np.percentile(clean_losses, 96), clean_losses, np.nan)
+    clean_losses = np.where(clean_losses<np.percentile(clean_losses, 80), clean_losses, np.nan)
     ## Plot a second plot with the outliers removed
     ax2 = sbplot(epochs, clean_losses, label="96th Percentile", x_label='Train Steps', y_label='Loss', ax=ax2, dark_background=False, y_scale="linear" if not use_mse_loss else "log");
 
