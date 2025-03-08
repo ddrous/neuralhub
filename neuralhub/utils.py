@@ -123,7 +123,7 @@ def flatten_pytree(pytree):
 def unflatten_pytree(flat, shapes, tree_def):
     """ Reconstructs a pytree given its leaves flattened, their shapes, and the treedef. """
 
-    leaves_prod = [0]+[np.prod(x) for x in shapes]
+    leaves_prod = [0]+[np.prod(x, dtype=int) for x in shapes]
 
     lpcum = np.cumsum(leaves_prod)
     leaves = [flat[lpcum[i-1]:lpcum[i]].reshape(shapes[i-1]) for i in range(1, len(lpcum))]
