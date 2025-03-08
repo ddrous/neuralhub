@@ -59,8 +59,8 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
 print_every = 1
-nb_epochs = 2
-batch_size = 32*22
+nb_epochs = 500
+batch_size = 32*4
 unit_normalise = False
 grounding_length = 5          ## The length of the grounding pixel for the autoregressive digit generation
 mini_res_mnist = 1
@@ -160,16 +160,16 @@ class TimeDecoder(eqx.Module):
         C, H, W = out_shape
 
         self.layers = [
-            eqx.nn.Linear(1, 8, key=layer_keys[0]),
+            eqx.nn.Linear(1, 32, key=layer_keys[0]),
             eqx.nn.PReLU(init_alpha=0.),
-            eqx.nn.Linear(8, 4*H*W//(16*16), key=layer_keys[1]),
+            eqx.nn.Linear(32, 4*H*W//(8*8), key=layer_keys[1]),
             eqx.nn.PReLU(init_alpha=0.),
-            lambda x: x.reshape((4, H//16, W//16)),
-            Upsample2D(factor=4),
-            eqx.nn.ConvTranspose2d(4, 6, kernel_size, padding="SAME", key=layer_keys[2]),
+            lambda x: x.reshape((4, H//8, W//8)),
+            Upsample2D(factor=2),
+            eqx.nn.ConvTranspose2d(4, 12, kernel_size, padding="SAME", key=layer_keys[2]),
             eqx.nn.PReLU(init_alpha=0.),
             Upsample2D(factor=2),
-            eqx.nn.ConvTranspose2d(6, 6, kernel_size, padding="SAME", key=layer_keys[3]),
+            eqx.nn.ConvTranspose2d(12, 6, kernel_size, padding="SAME", key=layer_keys[3]),
             eqx.nn.PReLU(init_alpha=0.),
             Upsample2D(factor=2),
             eqx.nn.ConvTranspose2d(6, C, kernel_size, padding="SAME", key=layer_keys[4]),
@@ -274,8 +274,8 @@ class Ses2Seq(eqx.Module):
                     else:
                         x_t = x_true
 
-                thet_next = self.A@thet + self.B(x_t - x_prev_prev)
-                # thet_next = self.A@thet + self.B(x_t) - self.B(x_prev_prev)   ## TODO: do this?
+                # thet_next = self.A@thet + self.B(x_t - x_prev_prev)
+                thet_next = self.A@thet + self.B(x_t) - self.B(x_prev_prev)   ## TODO: do this?
 
                 ## Decode the latent space
                 thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)

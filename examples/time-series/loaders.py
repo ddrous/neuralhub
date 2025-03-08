@@ -412,6 +412,50 @@ class CelebADataset(torch.utils.data.Dataset):
 
 
 
+# class MovingMNISTDataset(torch.utils.data.Dataset):
+#     """
+#     MovingMNIST dataset, returning elements of shape (T, C, H, W)
+#     """
+
+#     def __init__(self, data_dir, data_split, mini_res=4, unit_normalise=False):
+#         self.nb_classes = 10
+#         self.num_steps = 19
+#         self.data_size = (1, 64//mini_res, 64//mini_res)
+#         self.mini_res = mini_res
+
+#         tf = transforms.Compose(
+#             [
+#                 transforms.Lambda(lambda x: (x.float() / 255.) * 2 - 1) if not unit_normalise else transforms.Lambda(lambda x: x),
+#                 transforms.Lambda(lambda x: x[:, :, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
+#             ]
+#         )
+#         data = torchvision.datasets.MovingMNIST(
+#             data_dir, split=data_split, download=True, transform=tf, split_ratio=19 if data_split=="train" else 1,
+#         )
+
+#         ## Get all the data in one large batch (to apply the transform)
+#         self.dataset = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
+#         self.labels = np.random.randint(0, 10, size=(self.dataset.shape[0],)) * np.nan
+
+#         self.t_eval = np.linspace(0., 1., self.num_steps)
+#         self.total_envs = self.dataset.shape[0]
+
+#     def __getitem__(self, idx):
+#         inputs = self.dataset[idx, ...]
+#         outputs = self.labels[idx]
+#         t_eval = self.t_eval
+
+#         return (inputs, t_eval), outputs
+
+#     def __len__(self):
+#         return self.total_envs
+
+
+
+
+
+
+
 class MovingMNISTDataset(torch.utils.data.Dataset):
     """
     MovingMNIST dataset, returning elements of shape (T, C, H, W)
@@ -429,19 +473,16 @@ class MovingMNISTDataset(torch.utils.data.Dataset):
                 transforms.Lambda(lambda x: x[:, :, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
             ]
         )
-        data = torchvision.datasets.MovingMNIST(
+        self.dataset = torchvision.datasets.MovingMNIST(
             data_dir, split=data_split, download=True, transform=tf, split_ratio=19 if data_split=="train" else 1,
         )
 
-        ## Get all the data in one large batch (to apply the transform)
-        self.dataset = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
-        self.labels = np.random.randint(0, 10, size=(self.dataset.shape[0],)) * np.nan
-
+        self.total_envs = len(self.dataset)
+        self.labels = np.random.randint(0, 10, size=(self.total_envs,)) * np.nan
         self.t_eval = np.linspace(0., 1., self.num_steps)
-        self.total_envs = self.dataset.shape[0]
 
     def __getitem__(self, idx):
-        inputs = self.dataset[idx, ...]
+        inputs = self.dataset[idx]
         outputs = self.labels[idx]
         t_eval = self.t_eval
 
@@ -449,6 +490,8 @@ class MovingMNISTDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.total_envs
+
+
 
 
 
@@ -462,7 +505,7 @@ if __name__ == "__main__":
     trainloader = NumpyLoader(MovingMNISTDataset(data_folder, data_split="train", mini_res=1, unit_normalise=False), 
                               batch_size=batch_size, 
                               shuffle=True, 
-                              num_workers=24)
+                              num_workers=0)
     
     batch = next(iter(trainloader))
     (images, times), labels = batch
