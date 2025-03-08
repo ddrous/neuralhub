@@ -61,7 +61,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-mlp_hidden_size = 24*1
+mlp_hidden_size = 32*1
 mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
@@ -73,10 +73,10 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 ## Training hps
 print_every = 1
 nb_epochs = 2*60*4
-batch_size = 64*2*16
+batch_size = 32*8
 unit_normalise = False
 grounding_length = 150          ## The length of the grounding pixel for the autoregressive digit generation
-autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
+autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
@@ -87,7 +87,7 @@ weights_clip_scale = 2.         ## kappa from Weight Clipping paper
 nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (16, 16)
+resolution = (32, 32)
 forcing_prob = 0.15
 std_lower_bound = 1e-4              ## Let's optimise the lower bound
 print(f"==== {supervision_task.capitalize()} Task ====")

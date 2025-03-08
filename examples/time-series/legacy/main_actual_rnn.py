@@ -65,6 +65,7 @@ mlp_hidden_size = 24*1
 mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
+latent_size = 256
 
 ## Optimiser hps
 init_lr = 1e-4
@@ -83,7 +84,6 @@ supervision_task = "reconstruction"       ## True for classification, reconstruc
 mini_res_mnist = 1
 traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
 weights_lim = 5e+2              ## Limit the weights of the root model to this value
-weights_clip_scale = 2.         ## kappa from Weight Clipping paper
 nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
@@ -257,6 +257,7 @@ class Ses2Seq(eqx.Module):
     """ Sequence to sequence model which takes in an initial latent space """
     As: jnp.ndarray
     Bs: jnp.ndarray
+    Cs: jnp.ndarray
     thetas: jnp.ndarray
     std_lb: jnp.ndarray
 
@@ -295,32 +296,29 @@ class Ses2Seq(eqx.Module):
         root_utils = []
         As = []
         Bs = []
+        Cs = []
         for i in range(nb_rnn_layers):
-            root = RootMLP(1, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
-            params, static = eqx.partition(root, eqx.is_array)
-            weights, shapes, treedef = flatten_pytree(params)
-            root_utils.append((shapes, treedef, static, root.props))
-            thetas.append(weights)
+            # thetas.append(jnp.zeros((latent_size,)))
+            ## Initialise with noise
+            thetas.append(jax.random.normal(keys[i], (latent_size,)))
 
-            latent_size = weights.shape[0]
             A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
             if use_theta_prev:
                 A = A*0.
+
             As.append(A)
-            Bs.append(jnp.zeros((latent_size, B_out_shapes[i])))
+            Bs.append(jnp.zeros((latent_size, data_size)))
+            Cs.append(jnp.zeros((out_size, latent_size)))
 
         self.root_utils = root_utils
         self.thetas = thetas
         self.As = As
         self.Bs = Bs
+        self.Cs = Cs
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
         self.std_lb = jnp.array([std_lower_bound])
-
-        # ## Set the global limits for the weights
-        # global network_clip 
-        # network_clip = (self.thetas*)
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -348,7 +346,8 @@ class Ses2Seq(eqx.Module):
 
                     A = self.As[i]
                     B = self.Bs[i]
-                    root_utils = self.root_utils[i]
+                    # root_utils = self.root_utils[i]
+                    C = self.Cs[i]
 
                     if supervision_task=="classification":
                         x_t = x_true
@@ -378,15 +377,7 @@ class Ses2Seq(eqx.Module):
                         thet_next = A*thet + B@(x_t - x_prev_prev)
 
                     ## 2. Decode the latent space
-                    thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
-                    # jax.debug.print("Smallest and biggest values in thet_next: {} {}", jnp.min(thet_next), jnp.max(thet_next))
-
-                    shapes, treedef, static, _ = root_utils
-                    params = unflatten_pytree(thet_next, shapes, treedef)
-                    root_fun = eqx.combine(params, static)
-                    # ## Clip t between 0 and 1
-                    # t_curr = jnp.clip(self.t, 0., 1.)
-                    y_next = root_fun(t_curr + delta_t)
+                    y_next = C @ thet_next
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -401,13 +392,6 @@ class Ses2Seq(eqx.Module):
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
                 (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
-
-                if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
-                    ### We reconstitute the model, and we apply the model at each step
-                    shapes, treedef, static, _ = self.root_utils[i]
-                    params = unflatten_pytree(thet_final, shapes, treedef)
-                    root_fun = eqx.combine(params, static)
-                    xs_ = eqx.filter_vmap(root_fun)(ts_[:, None])
 
             return xs_
 
