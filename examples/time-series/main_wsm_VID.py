@@ -1,6 +1,7 @@
 #%%[markdown]
 
-# ## Meta-Learnig via Sequence Models in Weight Space
+## Meta-Learnig via Sequence Models in Weight Space
+# Working for videos
 
 #%%
 # %load_ext autoreload
@@ -45,16 +46,16 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2026
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-kernel_size = 4
+kernel_size = 3
 
 ## Optimiser hps
-init_lr = 1e-4
+init_lr = 1e-5
 lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
@@ -69,8 +70,9 @@ weights_lim = 5e-1              ## Limit the weights of the root model to this v
 nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-forcing_prob = 0.15
+forcing_prob = 0.5
 std_lower_bound = 1e-4              ## Let's optimise the lower bound
+std_upper_bound = 1e+2
 grad_clip_norm = 1e-7
 
 train = True
@@ -94,8 +96,7 @@ os.system(f"cp loaders.py {run_folder}");
 
 #%%
 
-print(" #### MNIST Dataset ####")
-fashion = dataset=="mnist_fashion"
+print(" #### Moving MNIST Dataset ####")
 trainloader = NumpyLoader(MovingMNISTDataset(data_folder, data_split="train", mini_res=mini_res_mnist, unit_normalise=unit_normalise), 
                             batch_size=batch_size, 
                             shuffle=True, 
@@ -132,8 +133,8 @@ plt.savefig(run_folder+"sample_videos.png", dpi=100, bbox_inches='tight')
 def enforce_absonerange(x):
     return jax.nn.tanh(x)
 
-def enforce_positivity(x):
-    return jax.nn.softplus(x)       ## Will be clipped by the model.
+def enforce_positivity(x, lb, ub):
+    return jnp.clip(jax.nn.softplus(x), lb, ub)
 
 class Upsample2D(eqx.Module):
     """ Upsample 2D image by a factor: https://docs.kidger.site/equinox/examples/unet/ """
@@ -152,6 +153,7 @@ class TimeDecoder(eqx.Module):
     Dec: t -> frame_t
     """
     layers: list
+    std_bounds: jnp.ndarray
 
     def __init__(self, out_shape, kernel_size, key=None):
         key = key if key is not None else jax.random.PRNGKey(0)
@@ -175,6 +177,8 @@ class TimeDecoder(eqx.Module):
             eqx.nn.ConvTranspose2d(6, C, kernel_size, padding="SAME", key=layer_keys[4]),
         ]
 
+        self.std_bounds = jnp.array([std_lower_bound, std_upper_bound])
+
     def __call__(self, t):
         out = t
         for layer in self.layers:
@@ -185,7 +189,7 @@ class TimeDecoder(eqx.Module):
         else:
             recons, stds = jnp.split(out, 2, axis=-1)
             return jnp.concatenate([enforce_absonerange(recons),
-                                    enforce_positivity(stds)], axis=-1)
+                                    enforce_positivity(stds, *self.std_bounds)], axis=-1)
 
 class DataEncoder(eqx.Module):
     """ A CNN followd by an MLP to produce a vector of specific size
@@ -228,7 +232,6 @@ class Ses2Seq(eqx.Module):
     A: jnp.ndarray
     B: eqx.Module
     theta: jnp.ndarray
-    std_lb: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -247,7 +250,6 @@ class Ses2Seq(eqx.Module):
         latent_size = weights.shape[0]
         self.A = jnp.eye(latent_size, latent_size)
         self.B = DataEncoder(img_size, kernel_size, latent_size, key=B_key)     ## TODO: zerout the B weights ?
-        self.std_lb = jnp.array([std_lower_bound])
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
 
@@ -274,8 +276,8 @@ class Ses2Seq(eqx.Module):
                     else:
                         x_t = x_true
 
-                # thet_next = self.A@thet + self.B(x_t - x_prev_prev)
-                thet_next = self.A@thet + self.B(x_t) - self.B(x_prev_prev)   ## TODO: do this?
+                thet_next = self.A@thet + self.B(x_t - x_prev_prev)
+                # thet_next = self.A@thet + self.B(x_t) - self.B(x_prev_prev)   ## TODO: do this?
 
                 ## Decode the latent space
                 thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
@@ -327,7 +329,7 @@ def loss_fn(model, batch, key):
         loss_r = optax.l2_loss(X_recons, X_true)
     else:
         means = X_recons[:, :, :C]
-        stds = jnp.maximum(X_recons[:, :, C:], model.std_lb)
+        stds = X_recons[:, :, C:]
         loss_r = jnp.log(stds) + 0.5*((X_true - means)/stds)**2
 
     loss = jnp.mean(loss_r)
