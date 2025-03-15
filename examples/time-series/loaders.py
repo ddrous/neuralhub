@@ -141,6 +141,12 @@ class MNISTDataset(TimeSeriesDataset):
 
         super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
+        # ## Limit the dataset to N samples (For debugging) TODO: Remove this
+        # N = 2000
+        # self.total_envs = N
+        # self.dataset = self.dataset[:N]
+        # self.labels = self.labels[:N]
+
 
 
 

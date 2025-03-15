@@ -1,6 +1,7 @@
 #%%[markdown]
 
 # ## Meta-Learnig via RNNs in weight space
+# The root network takes the x_t as additional input
 
 
 #%%
@@ -47,7 +48,7 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2032
+SEED = 2026
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -64,29 +65,28 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
 print_every = 1
-nb_epochs = 1000
-batch_size = 32*43
+nb_epochs = 500
+batch_size = 32*15
 unit_normalise = False
-grounding_length = 500              ## The length of the grounding pixel for the autoregressive digit generation
-autoregressive_inference = True     ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image
-full_matrix_A = True                ## Whether to use a full matrix A or a diagonal one
-use_theta_prev = False              ## Whether to use the previous pevious theta in the computation of the next one
+grounding_length = 300          ## The length of the grounding pixel for the autoregressive digit generation
+autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image
+full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
+use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
 mini_res_mnist = 1
-traj_train_prop = 1.0               ## Proportion of steps to sample to train each time series
-weights_lim = 1e-0                  ## Limit the weights of the root model to this value
-nb_recons_loss_steps = -1           ## Number of steps to sample for the reconstruction loss
-train_strategy = "flip_coin"        ## "flip_coin", "teacher_forcing", "always_true"
+traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
+weights_lim = 5e-1              ## Limit the weights of the root model to this value
+nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
+train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
 resolution = (32, 32)
 forcing_prob = 0.15
-std_lower_bound = 1e-5              ## Let's optimise the lower bound
-std_upper_bound = 1e+2
-add_time_as_feature = False         ## Add the time as a feature to the input
+std_lower_bound = 1e-4              ## Let's optimise the lower bound
+std_upper_bound = 1e+1
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
+dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -201,31 +201,14 @@ def enforce_absonerange(x):
 
 def enforce_positivity(x, lb, ub):
     # return jax.nn.softplus(x)       ## Will be clipped by the model.
-    # return jnp.clip(jax.nn.softplus(x), lb, ub)
-    # return jnp.clip(jax.nn.sigmoid(x), lb, ub)
+    return jnp.clip(jax.nn.softplus(x), lb, ub)
 
-    # return jnp.clip(jax.nn.softplus(jax.nn.tanh(x)), lb, ub)      ## WORKS !
-    return jax.nn.softplus(jax.nn.tanh(x))      ## WORKS !
-    # return jnp.exp(x)      ## WORKS !
-    # return jnp.log(2 / (1 + jnp.exp(-2*x)))
-    # return jnp.clip(x - jnp.log(jnp.cosh(x)), lb, ub)
-
-    # return jnp.clip(-2*x + jnp.log(2) - jax.nn.softplus(2*x), lb, ub)
-
-    # return jnp.clip(100*jax.nn.sigmoid(x), lb, ub)
-    # return x
-
-
-def enforce_dtanh(x, params):           ## Idea from: https://arxiv.org/abs/2503.10622
-    alpha, beta, gamma = params
-    # return jnp.clip(gamma*jnp.tanh(alpha*x + beta), std_lower_bound, std_upper_bound)
-    return gamma*jnp.tanh(alpha*x) + beta
 
 class RootMLP(eqx.Module):
     network: eqx.Module
     props: any      ## Properties of the network
     final_activation: any
-    # std_bounds: jnp.ndarray
+    std_bounds: jnp.ndarray
 
     def __init__(self, input_dim, output_dims, hidden_size, depth, activation, key=None):
         key = key if key is not None else jax.random.PRNGKey(0)
@@ -237,31 +220,20 @@ class RootMLP(eqx.Module):
         self.network = eqx.nn.MLP(input_dim, output_dims, hidden_size, depth, activation, key=keys[0])
 
         self.props = (input_dim, output_dims, hidden_size, depth, activation)
-        # self.std_bounds = jnp.array([std_lower_bound, std_upper_bound])
-        # self.dtanh = jnp.array([1.45, 0.73, 0.47])
+        self.std_bounds = jnp.array([std_lower_bound, std_upper_bound])
 
-    def __call__(self, t):
-        out = self.network(t)
+    def __call__(self, t, x):
+        out = self.network(jnp.concatenate([t, x], axis=-1))
         if supervision_task=="reconstruction" and dataset in image_datasets:
             if use_mse_loss:
                 return jax.nn.tanh(out)
             else:
-                # recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:], *self.std_bounds)
-                # recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:], std_lower_bound, std_upper_bound)
-
-                # recons, stds = enforce_absonerange(out[:data_size]), enforce_dtanh(out[data_size:], self.dtanh)
-                # return jnp.concatenate([recons, stds], axis=-1)
-
-                # return enforce_dtanh(out, self.dtanh)
-                return out
-
-                # return jnp.nan_to_num(jnp.concatenate([recons, stds], axis=-1), neginf=0., posinf=
+                recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:], *self.std_bounds)
+                return jnp.concatenate([recons, stds], axis=-1)
         elif supervision_task=="classification":
             return out  ## Softmax is applied in the loss function
         else:
             raise NotImplementedError("Not supported for now")
-
-        # return jax.nn.tanh(out)
 
 ## Define the global limits for the weights as a RootMLP
 network_clip = None
@@ -272,7 +244,6 @@ class Ses2Seq(eqx.Module):
     As: jnp.ndarray
     Bs: jnp.ndarray
     thetas: jnp.ndarray
-    dtanh: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -310,13 +281,10 @@ class Ses2Seq(eqx.Module):
         As = []
         Bs = []
         for i in range(nb_rnn_layers):
-            in_size = 2 is add_time_as_feature else 1
-            root = RootMLP(in_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
+            root = RootMLP(1+data_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
-            ## Limit the weights
-            weights = jnp.clip(weights, -weights_lim, weights_lim)
             thetas.append(weights)
 
             latent_size = weights.shape[0]
@@ -333,7 +301,6 @@ class Ses2Seq(eqx.Module):
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
-        self.dtanh = jnp.array([[1., 1.45], [0., 0.73], [1., 0.47]])
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -385,23 +352,21 @@ class Ses2Seq(eqx.Module):
                             raise NotImplementedError("Full matrix A with theta_prev not implemented yet")
                         else:
                             # Concat x_t and t_curr, then x_prev_prev and t_prev
-                            if add_time_as_feature:
-                                x_t = jnp.concatenate([t_curr, x_t], axis=-1)
-                                x_prev_prev = jnp.concatenate([t_prev, x_prev_prev], axis=-1)
+                            # x_t = jnp.concatenate([x_t, t_curr], axis=-1)
+                            # x_prev_prev = jnp.concatenate([x_prev_prev, t_prev], axis=-1)
                             thet_next = A@thet + B@(x_t - x_prev_prev)     ## Promising !
                     else:
                         thet_next = A*thet + B@(x_t - x_prev_prev)
 
                     ## 2. Decode the latent space
-                    # thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
+                    thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
                     ## Clip with a mximum minimum
                     # thet_next = jnp.maximum(jnp.minimum(thet_next, weights_lim), -weights_lim)
 
                     shapes, treedef, static, _ = root_utils
                     params = unflatten_pytree(thet_next, shapes, treedef)
                     root_fun = eqx.combine(params, static)
-                    y_next = root_fun(t_curr + delta_t)
-                    y_next = enforce_dtanh(y_next, self.dtanh)
+                    y_next = root_fun(t_curr + delta_t, x_t)
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -510,13 +475,8 @@ def loss_fn(model, batch, utils):
             ## Do a maximum-minimum to get the stds in the right range
             # stds = jnp.maximum(jnp.minimum(X_recons_[:, :, data_size:], model.std_bounds[1]), model.std_bounds[0])
             stds = X_recons_[:, :, data_size:]
-            # stds = jnp.clip(X_recons_[:, :, data_size:], std_lower_bound, std_upper_bound)
 
-            # stds = jnp.nan_to_num(X_recons_[:, :, data_size:], nan=-1., posinf=1., neginf=-1.)
-
-            # stds = jnp.clip(jax.nn.softplus(X_recons_[:, :, data_size:]), std_lower_bound, std_upper_bound)
-
-            loss_r = jnp.log(stds) + 0.5*((X_true_ - means)/(stds))**2
+            loss_r = jnp.log(stds) + 0.5*((X_true_ - means)/stds)**2
 
         loss = jnp.mean(loss_r)
         return loss, (loss,)
@@ -595,8 +555,8 @@ alpha = 1.
 
 if train:
     num_steps = trainloader.num_batches * nb_epochs
-    # bd_scales = {int(num_steps/3):1.0, int(num_steps*2/3):1.0}
-    # sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
+    bd_scales = {int(num_steps/3):1.0, int(num_steps*2/3):1.0}
+    sched = optax.piecewise_constant_schedule(init_value=init_lr, boundaries_and_scales=bd_scales)
 
     # sched = optax.linear_schedule(init_value=init_lr, end_value=init_lr/100, transition_steps=num_steps)
     # sched = init_lr
@@ -643,8 +603,8 @@ if train:
 
     for epoch in range(nb_epochs):
 
-        # nb_batches = 0.
-        loss_sum = []
+        nb_batches = 0.
+        loss_sum = 0.
 
         alpha = alpha_schedule(epoch, nb_epochs)
 
@@ -652,15 +612,13 @@ if train:
             train_key, _ = jax.random.split(train_key)
             model, opt_state, loss, aux = train_step(model, batch, opt_state, (alpha, train_key))
 
-            # loss_sum += loss
-            loss_sum.append(loss)
-            # nb_batches += 1
+            loss_sum += loss
+            nb_batches += 1
 
             losses.append(loss)
             lr_scales.append(optax.tree_utils.tree_get(opt_state, "scale"))
 
-        # loss_epoch = loss_sum/nb_batches
-        loss_epoch = np.median(loss_sum)        ## Median, since too many fluctiations
+        loss_epoch = loss_sum/nb_batches
         losses_epoch.append(loss_epoch)
 
         if epoch%print_every==0 or epoch<=3 or epoch==nb_epochs-1:
@@ -672,7 +630,7 @@ if train:
                 if use_mse_loss:
                     print(f"    Epoch: {epoch:-5d}      MSELoss: {loss_epoch:.6f}", flush=True)
                 else:
-                    print(f"    Epoch: {epoch:-5d}      Median NLL Loss: {loss_epoch:.6f}", flush=True)
+                    print(f"    Epoch: {epoch:-5d}      NLL Loss: {loss_epoch:.6f}", flush=True)
             else:
                 loss_r, loss_c, acc = aux
                 print(f"    Epoch: {epoch:-5d}      Total Loss: {loss_epoch:.6f}      Reconstruction Loss: {loss_r:.6f}      Classification Loss: {loss_c:.6f}      Accuracy: {acc*100:.2f}%", flush=True)
@@ -706,8 +664,9 @@ else:
 
     print("Model loaded from folder")
 
-## Print the current value of the lower bound
-print("Bounds for the standard deviations:", std_lower_bound, std_upper_bound)
+# ## Print the current value of the lower bound
+# print("Initial bounds for the standard deviations:", std_lower_bound, std_upper_bound)
+# print("Final bounds for the standard deviations:", model.std_bounds)
 
 # %%
 
@@ -806,7 +765,7 @@ if full_matrix_A:
     # min_val = min(jnp.min(model.A), jnp.min(untrained_model.A))
     # max_val = max(jnp.max(model.A), jnp.max(untrained_model.A))
     min_val = -0.00
-    max_val = 0.0003
+    max_val = 0.003
 
     img = axs[0].imshow(untrained_model.As[0], cmap='viridis', vmin=min_val, vmax=max_val)
     axs[0].set_title("Untrained A")
