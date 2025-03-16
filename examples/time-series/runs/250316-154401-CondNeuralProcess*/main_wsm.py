@@ -85,7 +85,7 @@ forcing_prob = 0.15
 std_lower_bound = 5e-1
 print(f"==== {supervision_task.capitalize()} Task ====")
 
-train = True
+train = False
 dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]

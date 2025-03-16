@@ -80,3 +80,4 @@ examples/time-series/wandb/*
 !examples/time-series/runs/250303-190002-SuperCelebA*
 !examples/time-series/runs/250304-205114-BestCeleb64*
 !examples/time-series/runs/250304-170656-BestCelebA16*
+!examples/time-series/runs/250316-154401-CondNeuralProcess*
