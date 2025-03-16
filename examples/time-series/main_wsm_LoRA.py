@@ -57,7 +57,7 @@ mlp_hidden_size = 24*1
 mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
-context_size = 2**4
+context_size = 32
 
 ## Optimiser hps
 init_lr = 1e-5
@@ -65,15 +65,15 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
 print_every = 1
-nb_epochs = 2*60*4
-batch_size = 16*16*16
+nb_epochs = 1000
+batch_size = 16*16*3
 unit_normalise = False
-grounding_length = 100          ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
-mini_res_mnist = 2
+mini_res_mnist = 1
 traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
 # weights_lim = 5e-0              ## Limit the weights of the root model to this value
 nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruction loss
@@ -82,7 +82,7 @@ use_mse_loss = False
 resolution = (32, 32)
 forcing_prob = 0.15
 std_lower_bound = 1e-4
-std_upper_bound = 1e+1
+std_upper_bound = 1e+2
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
@@ -203,6 +203,11 @@ def enforce_positivity(x, lb, ub):
     # return jax.nn.softplus(x)       ## Will be clipped by the model.
     return jnp.clip(jax.nn.softplus(x), lb, ub)
 
+def enforce_dtanh(x, params):           ## Idea from: https://arxiv.org/abs/2503.10622
+    alpha, beta, gamma = params
+    # return jnp.clip(gamma*jnp.tanh(alpha*x + beta), std_lower_bound, std_upper_bound)
+    return gamma*jnp.tanh(alpha*x) + beta
+
 
 class RootMLP(eqx.Module):
     network: eqx.Module
@@ -226,17 +231,18 @@ class RootMLP(eqx.Module):
         self.std_bounds = jnp.array([std_lower_bound, std_upper_bound])
 
     def __call__(self, t):
-        out = self.network(t)
-        if supervision_task=="reconstruction" and dataset in image_datasets:
-            if use_mse_loss:
-                return jax.nn.tanh(out)
-            else:
-                recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:], *self.std_bounds)
-                return jnp.concatenate([recons, stds], axis=-1)
-        elif supervision_task=="classification":
-            return out  ## Softmax is applied in the loss function
-        else:
-            raise NotImplementedError("Not supported for now")
+        # out = self.network(t)
+        # if supervision_task=="reconstruction" and dataset in image_datasets:
+        #     if use_mse_loss:
+        #         return jax.nn.tanh(out)
+        #     else:
+        #         recons, stds = enforce_absonerange(out[:data_size]), enforce_positivity(out[data_size:], *self.std_bounds)
+        #         return jnp.concatenate([recons, stds], axis=-1)
+        # elif supervision_task=="classification":
+        #     return out  ## Softmax is applied in the loss function
+        # else:
+        #     raise NotImplementedError("Not supported for now")
+        return self.network(t)
 
 
 # ## Define model and loss function for the learner
@@ -247,6 +253,7 @@ class Ses2Seq(eqx.Module):
     Cs: jnp.ndarray     ## C and D are for low-rank adaptation
     Ds: jnp.ndarray
     thetas: jnp.ndarray
+    dtanh: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -345,6 +352,7 @@ class Ses2Seq(eqx.Module):
 
         self.inference_mode = False     ## Change to True to use the model autoregressively
         self.data_size = data_size
+        self.dtanh = jnp.array([[1., 1.45], [0., 0.73], [1., 0.47]])
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -420,6 +428,7 @@ class Ses2Seq(eqx.Module):
                     # adapted_params = jnp.clip(adapted_params, -weights_lim, weights_lim)
                     root_fun = eqx.combine(adapted_params, static)
                     y_next = root_fun(t_curr+delta_t)
+                    y_next = enforce_dtanh(y_next, self.dtanh)
 
                     if supervision_task=="classification":
                         x_next_mean = x_true

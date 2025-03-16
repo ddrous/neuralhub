@@ -141,12 +141,6 @@ class MNISTDataset(TimeSeriesDataset):
 
         super().__init__(dataset.numpy(), labels.numpy(), t_eval, traj_prop=traj_prop)
 
-        # ## Limit the dataset to N samples (For debugging) TODO: Remove this
-        # N = 1024
-        # self.total_envs = N
-        # self.dataset = self.dataset[:N]
-        # self.labels = self.labels[:N]
-
 
 
 
@@ -337,203 +331,58 @@ class CelebADataset(torch.utils.data.Dataset):
 
 
 
-# if __name__ == "__main__":
-#     import matplotlib.pyplot as plt
-#     ## Reset numpy random seed
-#     np.random.seed(0)
 
-#     data_folder, batch_size = "data/", 128
-#     resolution = (16, 16)
-#     trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=False), 
-#                               batch_size=batch_size, 
-#                               shuffle=True, 
-#                               num_workers=24)
 
-#     batch = next(iter(trainloader))
-#     (images, times), labels = batch
-#     print("Images shape:", images.shape)
-#     print("Labels shape:", labels.shape)
 
-#     print("Min and Max in the dataset:", np.min(images), np.max(images), flush=True)
 
-#     ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
-#     fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
-#     colors = ['r', 'g', 'b', 'c', 'm', 'y']
 
-#     dataset = "celeba"
-#     data_size = 3
-#     mini_res_mnist = 4
-#     image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
-#     def get_width(dataset):
-#         if dataset in ["mnist", "mnist_fashion"]:
-#             return 28 // mini_res_mnist
-#         elif dataset=="cifar":
-#             return 32 // mini_res_mnist
-#         elif dataset=="celeba":
-#             return resolution[0]
-#         else:
-#             return 32
-
-#     width = get_width(dataset)
-#     res = (width, width, data_size)
-#     for i in range(4):
-#         for j in range(4):
-#             idx = np.random.randint(0, images.shape[0])
-#             # axs[i, j].imshow(images[idx].reshape(res), cmap='gray', vmin=-1, vmax=1)
-
-#             to_plot = (images[idx].reshape(res) + 1 ) / 2
-#             axs[i, j].imshow(to_plot, cmap='gray')
-
-#             axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
-#             axs[i, j].axis('off')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class MovingMNISTDataset(torch.utils.data.Dataset):
-#     """
-#     MovingMNIST dataset, returning elements of shape (T, C, H, W)
-#     """
-
-#     def __init__(self, data_dir, data_split, mini_res=4, unit_normalise=False):
-#         self.nb_classes = 10
-#         self.num_steps = 19
-#         self.data_size = (1, 64//mini_res, 64//mini_res)
-#         self.mini_res = mini_res
-
-#         tf = transforms.Compose(
-#             [
-#                 transforms.Lambda(lambda x: (x.float() / 255.) * 2 - 1) if not unit_normalise else transforms.Lambda(lambda x: x),
-#                 transforms.Lambda(lambda x: x[:, :, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
-#             ]
-#         )
-#         data = torchvision.datasets.MovingMNIST(
-#             data_dir, split=data_split, download=True, transform=tf, split_ratio=19 if data_split=="train" else 1,
-#         )
-
-#         ## Get all the data in one large batch (to apply the transform)
-#         self.dataset = next(iter(torch.utils.data.DataLoader(data, batch_size=len(data), shuffle=False)))
-#         self.labels = np.random.randint(0, 10, size=(self.dataset.shape[0],)) * np.nan
-
-#         self.t_eval = np.linspace(0., 1., self.num_steps)
-#         self.total_envs = self.dataset.shape[0]
-
-#     def __getitem__(self, idx):
-#         inputs = self.dataset[idx, ...]
-#         outputs = self.labels[idx]
-#         t_eval = self.t_eval
-
-#         return (inputs, t_eval), outputs
-
-#     def __len__(self):
-#         return self.total_envs
-
-
-
-
-
-
-
-class MovingMNISTDataset(torch.utils.data.Dataset):
-    """
-    MovingMNIST dataset, returning elements of shape (T, C, H, W)
-    """
-
-    def __init__(self, data_dir, data_split, mini_res=4, unit_normalise=False):
-        self.nb_classes = 10
-        self.num_steps = 19
-        self.data_size = (1, 64//mini_res, 64//mini_res)
-        self.mini_res = mini_res
-
-        tf = transforms.Compose(
-            [
-                transforms.Lambda(lambda x: (x.float() / 255.) * 2 - 1) if not unit_normalise else transforms.Lambda(lambda x: x),
-                transforms.Lambda(lambda x: x[:, :, ::mini_res, ::mini_res]) if mini_res>1 else transforms.Lambda(lambda x: x),
-            ]
-        )
-        self.dataset = torchvision.datasets.MovingMNIST(
-            data_dir, split=data_split, download=True, transform=tf, split_ratio=19 if data_split=="train" else 1,
-        )
-
-        self.total_envs = len(self.dataset)
-        self.labels = np.random.randint(0, 10, size=(self.total_envs,)) * np.nan
-        self.t_eval = np.linspace(0., 1., self.num_steps)
-
-    def __getitem__(self, idx):
-        inputs = self.dataset[idx]
-        outputs = self.labels[idx]
-        t_eval = self.t_eval
-
-        return (inputs, t_eval), outputs
-
-    def __len__(self):
-        return self.total_envs
-
-
-
-
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
-    ### Test the MovingMNIST dataset
-    import matplotlib.pyplot as plt
     ## Reset numpy random seed
     np.random.seed(0)
 
-    data_folder, batch_size = "data/", 1
-    trainloader = NumpyLoader(MovingMNISTDataset(data_folder, data_split="train", mini_res=1, unit_normalise=False), 
+    data_folder, batch_size = "data/", 128
+    resolution = (16, 16)
+    trainloader = NumpyLoader(CelebADataset(data_folder+"celeba/", data_split="train", num_shots=np.prod(resolution), resolution=resolution, order_pixels=True, unit_normalise=False), 
                               batch_size=batch_size, 
                               shuffle=True, 
-                              num_workers=0)
-    
+                              num_workers=24)
+
     batch = next(iter(trainloader))
     (images, times), labels = batch
     print("Images shape:", images.shape)
+    print("Labels shape:", labels.shape)
 
     print("Min and Max in the dataset:", np.min(images), np.max(images), flush=True)
 
-    ## Plot the single video in the batch
-    video = (images[0] + 1)/2       ## Shape: (T, C, H, W)
-    # video = (((images[0] + 1)/2) * 255).astype(int)       ## Shape: (T, C, H, W)
-    print("Min an Max in the video:", np.min(video), np.max(video))
-    T, C, H, W = video.shape
-    nb_frames = video.shape[0]
-    fig, axs = plt.subplots(1, T, figsize=(4*T, 4), sharex=True)
-    for i in range(T):
-        axs[i].imshow(video[i, 0, :, :], cmap='gray')
-        axs[i].axis('off')
+    ## Plot a few samples, along with their labels as title in a 4x4 grid (chose them at random)
+    fig, axs = plt.subplots(4, 4, figsize=(10, 10), sharex=True)
+    colors = ['r', 'g', 'b', 'c', 'm', 'y']
 
-    plt.show()
-    print("Labels:", labels)
+    dataset = "celeba"
+    data_size = 3
+    mini_res_mnist = 4
+    image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
+    def get_width(dataset):
+        if dataset in ["mnist", "mnist_fashion"]:
+            return 28 // mini_res_mnist
+        elif dataset=="cifar":
+            return 32 // mini_res_mnist
+        elif dataset=="celeba":
+            return resolution[0]
+        else:
+            return 32
 
+    width = get_width(dataset)
+    res = (width, width, data_size)
+    for i in range(4):
+        for j in range(4):
+            idx = np.random.randint(0, images.shape[0])
+            # axs[i, j].imshow(images[idx].reshape(res), cmap='gray', vmin=-1, vmax=1)
 
+            to_plot = (images[idx].reshape(res) + 1 ) / 2
+            axs[i, j].imshow(to_plot, cmap='gray')
 
-
-
+            axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
+            axs[i, j].axis('off')
