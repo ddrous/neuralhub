@@ -309,9 +309,9 @@ class Ses2Seq(eqx.Module):
                     shapes, treedef, static, _ = root_utils
                     params = unflatten_pytree(thet_next, shapes, treedef)
                     root_fun = eqx.combine(params, static)
-                    y_next = root_fun(t_curr-5*delta_t)     ## We don't care about the time here
-                    # y_next = root_fun(t_curr+delta_t)
-                    # y_next = root_fun(jnp.array([0.5]))     ## We don't care about the time here
+                    # y_next = root_fun(t_curr-5*delta_t)     ## We don't care about the time here
+                    y_next = root_fun(t_curr+delta_t)
+                    # y_next = root_fun(jnp.array([1.5]))     ## We don't care about the time here
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -758,7 +758,7 @@ if not supervision_task=="classification":
 
     plt.suptitle(f"Reconstruction using {grounding_length} initial pixels", fontsize=65)
     plt.draw();
-    plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+    plt.savefig(run_folder+"reconstruction_experiment.png", dpi=100, bbox_inches='tight')
 
 
 #%%

@@ -1,7 +1,7 @@
 #%%[markdown]
 
 # ## Meta-Learnig via RNNs in weight space
-# We now try to use future information by making the root network the encoder of a CNP
+# We now try to make the root network take as input (x,y) image coordinate
 
 #%%
 
@@ -53,7 +53,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 ## Model hps
-mlp_hidden_size = 24*1
+mlp_hidden_size = 24
 mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
@@ -61,28 +61,27 @@ nb_rnn_layers = len(rnn_inner_dims) + 1
 ## Optimiser hps
 init_lr = 1e-4
 lr_decrease_factor = 0.5        ## Reduce on plateau factor
-representation_size = 10
-context_pool_size = 128  ## NUmber of (t, x) pairs to compute the representation
 
 ## Training hps
 print_every = 1
 nb_epochs = 3000
-batch_size = 64*7
+batch_size = 64*44
 unit_normalise = False
 grounding_length = 300          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
-mini_res_mnist = 1
+mini_res_mnist = 2
 traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
 weights_lim = 5e-1              ## Limit the weights of the root model to this value
 nb_recons_loss_steps = 400        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (32, 32)
+resolution = (64, 64)
 forcing_prob = 0.15
 std_lower_bound = 5e-1
+std_additional_tanh = True         ## Whether to apply an additional tanh to the standard deviations activations
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
@@ -213,10 +212,9 @@ def enforce_positivity(x):
 def enforce_dynamictanh(x, params):           ## Slip x in two, and only apply the dynamic tanh to the second half
     a, b, alpha, beta = params
     mean, std = jnp.split(x, 2, axis=-1)
-    # return jnp.concatenate([jnp.tanh(mean), alpha*jnp.tanh((std-b)/a) + beta], axis=-1)
-    # return jnp.concatenate([jnp.tanh(mean), jax.nn.softplus(alpha*jnp.tanh((std-b)/a) + beta)], axis=-1)
-    # return jnp.concatenate([mean, jax.nn.softplus(std)], axis=-1)
-    return jnp.concatenate([jnp.tanh(mean), jax.nn.softplus(jnp.tanh(std))], axis=-1)
+    if std_additional_tanh:
+        std = jnp.tanh(std)
+    return jnp.concatenate([jnp.tanh(mean), jax.nn.softplus(std)], axis=-1)
 
 
 class RootMLP(eqx.Module):
@@ -238,7 +236,7 @@ class RootMLP(eqx.Module):
 
         self.props = (input_dim, output_dims, hidden_size, depth, activation)
 
-    def __call__(self, t):
+    def __call__(self, xy):
         # out = self.network(t)
         # if supervision_task=="reconstruction" and dataset in image_datasets:
         #     if use_mse_loss:
@@ -251,7 +249,12 @@ class RootMLP(eqx.Module):
         # else:
         #     raise NotImplementedError("Not supported for now")
 
-        return self.network(t)
+        # ## Derive the normalized x and y image coordiates from the normalized t
+        # ## We know the image is resolution is (width, width)
+        # x = jnp.sin(2*jnp.pi*t)
+        # y = jnp.cos(2*jnp.pi*t)
+
+        return self.network(xy)
 
 
 # ## Define model and loss function for the learner
@@ -262,7 +265,6 @@ class Ses2Seq(eqx.Module):
     thetas: jnp.ndarray
     # t: jnp.ndarray
     dtanh: jnp.ndarray
-    encoder: eqx.Module
 
     root_utils: list
     inference_mode: bool
@@ -300,18 +302,16 @@ class Ses2Seq(eqx.Module):
         As = []
         Bs = []
         for i in range(nb_rnn_layers):
-            root = RootMLP(representation_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
+            root = RootMLP(2, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
             thetas.append(weights)
 
             latent_size = weights.shape[0]
-            A = jnp.eye(latent_size, latent_size) if full_matrix_A else jnp.ones((latent_size,))
-            if use_theta_prev:
-                A = A*0.
+            A = jnp.eye(latent_size)
             As.append(A)
-            Bs.append(jnp.zeros((latent_size, B_out_shapes[i])))
+            Bs.append(jnp.zeros((latent_size, 2+B_out_shapes[i])))
 
         self.root_utils = root_utils
         self.thetas = thetas
@@ -324,9 +324,6 @@ class Ses2Seq(eqx.Module):
         # self.dtanh = jnp.array([1., 0.2, 0.5, 0.8])
         self.dtanh = jnp.array([1., 0., 1., 0.])
 
-        ## Design the encoder: takes in pairs of (t, x) and outputs the latent representation
-        self.encoder = eqx.nn.MLP(1+data_size, representation_size, 128, 4, builtin_fns[activation], key=keys[0])
-
 
     def __call__(self, xs, ts, aux):
         """ xs: (batch, time, data_size)
@@ -335,11 +332,6 @@ class Ses2Seq(eqx.Module):
         alpha, key = aux
 
         def forward(xs_, ts_, k_):
-
-            ## 0. Sample context pool size paris, and encoder them
-            indices = jax.random.randint(k_, shape=(context_pool_size,), minval=0, maxval=xs_.shape[0])
-            context_pairs = jnp.concatenate([ts_[indices, None], xs_[indices]], axis=-1)
-            latent_representation = eqx.filter_vmap(self.encoder)(context_pairs).mean(axis=0)
 
             ## 1. Fine-tune the latents weights on the sequence we have
             ## Call the JAX scan across layers
@@ -353,8 +345,8 @@ class Ses2Seq(eqx.Module):
 
                 ## Do a partial on f
                 def f(carry, input_signal):
-                    thet, x_prev, t_prev, x_prev_prev, step = carry
-                    x_true, t_curr, key_ = input_signal
+                    thet, x_prev, t_prev, x_prev_prev, step, coords_tm1 = carry
+                    x_true, t_curr, key_, coords_tp1, coords_t = input_signal
                     delta_t = t_curr - t_prev
 
                     A = self.As[i]
@@ -382,11 +374,11 @@ class Ses2Seq(eqx.Module):
                             # thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
                             raise NotImplementedError("Full matrix A with theta_prev not implemented yet")
                         else:
-                            # thet_next = A@(thet) + B@(x_t - x_prev_prev)     ## Promising !
-                            # thet_next = A@(thet) + B@(x_t)     ## Promising !
+                            x_t = jnp.concatenate([coords_t, x_t], axis=-1)
+                            x_prev_prev = jnp.concatenate([coords_tm1, x_prev], axis=-1)
                             thet_next = A@thet + B@(x_t - x_prev_prev)     ## Promising !
                     else:
-                        thet_next = A*thet + B@(x_t - x_prev_prev)
+                        pass
 
                     ## 2. Decode the latent space
                     thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
@@ -397,7 +389,7 @@ class Ses2Seq(eqx.Module):
                     root_fun = eqx.combine(params, static)
                     # ## Clip t between 0 and 1
                     # t_curr = jnp.clip(self.t, 0., 1.)
-                    y_next = root_fun(latent_representation)
+                    y_next = root_fun(coords_tp1)     ## these are x,y coordinates
                     y_next = enforce_dynamictanh(y_next, self.dtanh)
 
                     if supervision_task=="classification":
@@ -409,10 +401,18 @@ class Ses2Seq(eqx.Module):
                             # x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
                             pass
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, step+1), (y_next, )
+                    return (thet_next, x_next_mean, t_curr, x_prev, step+1, coords_t), (y_next, )
+
+                ## Construct the x,y normalised coordinates from the time
+                height = width
+                x_normalized = jnp.arange(width) / width
+                y_normalized = jnp.arange(height) / height
+                xx, yy = jnp.meshgrid(x_normalized, y_normalized)
+                xy_coords = jnp.stack((xx.flatten(), yy.flatten()), axis=-1)
+                xy_coords = jnp.concatenate([xy_coords, jnp.ones((1,2))], axis=0)    ## Cuz these are technically one step in the future
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
+                (thet_final, _, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0, xy_coords[0]), (sup_signal, ts_[:, None], keys, xy_coords[1:], xy_coords[:-1]))
 
                 if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
                     ### We reconstitute the model, and we apply the model at each step
@@ -798,7 +798,6 @@ if full_matrix_A:
     plt.savefig(run_folder+"A_matrices.png", dpi=100, bbox_inches='tight')
 
 
-
 # %%
 ## Let's evaluate the model on the test set
 accs = []
@@ -910,6 +909,8 @@ if not supervision_task=="classification":
     plt.suptitle(f"Reconstruction using {grounding_length} initial pixels", fontsize=65)
     plt.draw();
     plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+
+
 
 
 #%%
