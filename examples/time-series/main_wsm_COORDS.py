@@ -34,7 +34,7 @@ import equinox as eqx
 
 # import matplotlib.pyplot as plt
 from neuralhub import *
-from loaders import TrendsDataset, MNISTDataset, CIFARDataset, CelebADataset, DynamicsDataset
+from loaders import TrendsDataset, MNISTDataset, CIFARDataset, CelebADataset
 from selfmod import NumpyLoader, setup_run_folder, torch
 
 import optax
@@ -63,31 +63,29 @@ init_lr = 1e-5
 lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
-print_every = 100
+print_every = 1
 nb_epochs = 3000
-batch_size = 64*1
+batch_size = 32*10
 unit_normalise = False
-grounding_length = 3          ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
 supervision_task = "reconstruction"       ## True for classification, reconstruction, or both
 mini_res_mnist = 2
 traj_train_prop = 1.0           ## Proportion of steps to sample to train each time series
-weights_lim = None              ## Limit the weights of the root model to this value
-nb_recons_loss_steps = 40       ## Number of steps to sample for the reconstruction loss
+weights_lim = 5e-1              ## Limit the weights of the root model to this value
+nb_recons_loss_steps = 400        ## Number of steps to sample for the reconstruction loss
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
-resolution = (64, 64)
-forcing_prob = 0.25
+resolution = (32, 32)
+forcing_prob = 0.15
 std_lower_bound = 5e-1
-mean_tanh_activation = False       ## Whether to apply an tanh to the mean activations
 std_additional_tanh = False         ## Whether to apply an additional tanh to the standard deviations activations
-include_canonical_coords = False    ## Whether to include the canonical coordinates in the input to the root network
 print(f"==== {supervision_task.capitalize()} Task ====")
 
 train = True
-dataset = "dynamics"               ## mnist, cifar, or trends, mnist_fashion, "dynamics"
+dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -146,20 +144,6 @@ elif dataset=="celeba":
                                 num_workers=24)
     nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
     print("Training sequence length:", seq_length)
-elif dataset=="dynamics":
-    print(" #### Dynamics Dataset ####")
-    trainloader = NumpyLoader(DynamicsDataset(data_folder+"dynamics/lorentz-63/noisy.pt", traj_length=100), 
-                              batch_size=batch_size, 
-                              shuffle=True, 
-                              num_workers=24)
-    testloader = NumpyLoader(DynamicsDataset(data_folder+"dynamics/lorentz-63/noisy.pt", traj_length=100),     ## 5500
-                                batch_size=batch_size, 
-                                shuffle=True, 
-                                num_workers=24)
-    nb_classes, seq_length, data_size = trainloader.dataset.nb_classes, trainloader.dataset.num_steps, trainloader.dataset.data_size
-    print("Training sequence length:", seq_length)
-
-
 
 else:
     print(" #### Trends (Synthetic Control) Dataset ####")
@@ -203,14 +187,10 @@ for i in range(4):
             if (not unit_normalise) and (dataset=="celeba"):  ## Images are between -1 and 1
                 to_plot = (to_plot + 1) / 2
             axs[i, j].imshow(to_plot, cmap='gray')
-        elif dataset=="dynamics":
-            dim0, dim1 = (0, 1)
-            axs[i, j].plot(images[idx, :, dim0], images[idx, :, dim1], color=colors[labels[idx]%len(colors)])
         else:
             axs[i, j].plot(images[idx], color=colors[labels[idx]])
         axs[i, j].set_title(f"Class: {labels[idx]}", fontsize=12)
         axs[i, j].axis('off')
-
 
 # %%
 
@@ -219,6 +199,10 @@ def enforce_absonerange(x):
     return jax.nn.tanh(x)
 
 def enforce_positivity(x):
+    # return jnp.clip(jax.nn.softplus(x), 1e-6, 1)          ## Original code. This works! But may be optimal with tanh activation because softplus(-1) = 0.31 
+    # return jnp.clip(jnp.abs(x), 1e-6, 1)                  ## Try this as well.
+    # return jnp.clip((x+1.)/2., std_lower_bound, 1)                     ## If tanh activation was used
+    # return jnp.clip(jax.nn.sigmoid(2*x), std_lower_bound, 1)                     ## Good but
     return jnp.clip(jax.nn.softplus(x), std_lower_bound, None)                     ## As Godron et al.
 
 # def enforce_dynamictanh(x, params):           ## Idea from: https://arxiv.org/abs/2503.10622
@@ -228,11 +212,9 @@ def enforce_positivity(x):
 def enforce_dynamictanh(x, params):           ## Slip x in two, and only apply the dynamic tanh to the second half
     a, b, alpha, beta = params
     mean, std = jnp.split(x, 2, axis=-1)
-    if mean_tanh_activation:
-        mean = jnp.tanh(mean)
     if std_additional_tanh:
         std = jnp.tanh(std)
-    return jnp.concatenate([mean, jax.nn.softplus(std)], axis=-1)
+    return jnp.concatenate([jnp.tanh(mean), jax.nn.softplus(std)], axis=-1)
 
 
 class RootMLP(eqx.Module):
@@ -254,7 +236,7 @@ class RootMLP(eqx.Module):
 
         self.props = (input_dim, output_dims, hidden_size, depth, activation)
 
-    def __call__(self, txy):
+    def __call__(self, xy):
         # out = self.network(t)
         # if supervision_task=="reconstruction" and dataset in image_datasets:
         #     if use_mse_loss:
@@ -272,7 +254,7 @@ class RootMLP(eqx.Module):
         # x = jnp.sin(2*jnp.pi*t)
         # y = jnp.cos(2*jnp.pi*t)
 
-        return self.network(txy)
+        return self.network(xy)
 
 
 # ## Define model and loss function for the learner
@@ -319,8 +301,7 @@ class Ses2Seq(eqx.Module):
         As = []
         Bs = []
         for i in range(nb_rnn_layers):
-            root_in_size = 3 if include_canonical_coords else 1
-            root = RootMLP(root_in_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
+            root = RootMLP(2, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
@@ -329,8 +310,7 @@ class Ses2Seq(eqx.Module):
             latent_size = weights.shape[0]
             A = jnp.eye(latent_size)
             As.append(A)
-            add_dim = 3 if include_canonical_coords else 1
-            Bs.append(jnp.zeros((latent_size, add_dim+B_out_shapes[i])))
+            Bs.append(jnp.zeros((latent_size, 3+B_out_shapes[i])))
 
         self.root_utils = root_utils
         self.thetas = thetas
@@ -364,8 +344,8 @@ class Ses2Seq(eqx.Module):
 
                 ## Do a partial on f
                 def f(carry, input_signal):
-                    thet, x_prev, t_prev, x_prev_prev, step = carry
-                    x_true, t_curr, key_ = input_signal
+                    thet, x_prev, t_prev, x_prev_prev, step, coords_tm1 = carry
+                    x_true, t_curr, key_, coords_tp1, coords_t = input_signal
                     delta_t = t_curr - t_prev
 
                     A = self.As[i]
@@ -393,30 +373,22 @@ class Ses2Seq(eqx.Module):
                             # thet_next = thet + A@(thet_prev) + B@(x_t - x_prev_prev)     ## Maybe devide by delta_t ?
                             raise NotImplementedError("Full matrix A with theta_prev not implemented yet")
                         else:
-                            # if include_canonical_coords:
-                            #     x_t = jnp.concatenate([t_curr, coords_t, x_t], axis=-1)
-                            #     x_prev_prev = jnp.concatenate([t_prev, coords_tm1, x_prev], axis=-1)
-                            # else:
-                            x_t = jnp.concatenate([t_curr, x_t], axis=-1)
-                            x_prev_prev = jnp.concatenate([t_prev, x_prev], axis=-1)
+                            x_t = jnp.concatenate([t_curr, coords_t, x_t], axis=-1)
+                            x_prev_prev = jnp.concatenate([t_prev, coords_tm1, x_prev], axis=-1)
                             thet_next = A@thet + B@(x_t - x_prev_prev)     ## Promising !
                     else:
                         pass
 
                     ## 2. Decode the latent space
-                    if weights_lim is not None:
-                        thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
+                    thet_next = jnp.clip(thet_next, -weights_lim, weights_lim)
                     # jax.debug.print("Smallest and biggest values in thet_next: {} {}", jnp.min(thet_next), jnp.max(thet_next))
 
                     shapes, treedef, static, _ = root_utils
                     params = unflatten_pytree(thet_next, shapes, treedef)
                     root_fun = eqx.combine(params, static)
-                    # if include_canonical_coords:
-                    #     txy = jnp.concatenate([t_curr+delta_t, coords_tp1], axis=-1)
-                    # else:
-                    #     txy = t_curr+delta_t
-                    txy = t_curr+delta_t
-                    y_next = root_fun(txy)     ## these are x,y coordinates
+                    # ## Clip t between 0 and 1
+                    # t_curr = jnp.clip(self.t, 0., 1.)
+                    y_next = root_fun(coords_tp1)     ## these are x,y coordinates
                     y_next = enforce_dynamictanh(y_next, self.dtanh)
 
                     if supervision_task=="classification":
@@ -428,7 +400,7 @@ class Ses2Seq(eqx.Module):
                             # x_next_mean = jax.nn.tanh(y_next[:x_true.shape[0]])
                             pass
 
-                    return (thet_next, x_next_mean, t_curr, x_prev, step+1), (y_next, )
+                    return (thet_next, x_next_mean, t_curr, x_prev, step+1, coords_t), (y_next, )
 
                 ## Construct the x,y normalised coordinates from the time
                 height = width
@@ -439,7 +411,7 @@ class Ses2Seq(eqx.Module):
                 xy_coords = jnp.concatenate([xy_coords, jnp.ones((1,2))], axis=0)    ## Cuz these are technically one step in the future
 
                 sup_signal = xs_ if not final_layer else xs_orig        ## Supervisory signal
-                (thet_final, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0), (sup_signal, ts_[:, None], keys))
+                (thet_final, _, _, _, _, _), (xs_, ) = jax.lax.scan(f, (self.thetas[i], sup_signal[0], -ts_[1:2], sup_signal[0], 0, xy_coords[0]), (sup_signal, ts_[:, None], keys, xy_coords[1:], xy_coords[:-1]))
 
                 if self.inference_mode and not autoregressive_inference and supervision_task!="classification": 
                     ### We reconstitute the model, and we apply the model at each step
@@ -711,7 +683,6 @@ else:
 
     print("Model loaded from folder")
 
-
 ## Print the current value of the lower bound
 print("Lower bound for the standard deviations:", std_lower_bound)
 print("Params for the dynamic tanh:\n", model.dtanh)
@@ -827,7 +798,6 @@ if full_matrix_A:
 
 
 # %%
-
 ## Let's evaluate the model on the test set
 accs = []
 mses = []
@@ -904,8 +874,6 @@ if not supervision_task=="classification":
                 if (not unit_normalise) and (dataset=="celeba"):
                     to_plot = (to_plot + 1) / 2
                 axs[i, nb_cols*j].imshow(to_plot, cmap='gray')
-            elif dataset == "dynamics":
-                axs[i, nb_cols*j].plot(x[:, dim0], x[:, dim1], color=colors[labels[i*4+j]%len(colors)])
             else:
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
             if i==0:
@@ -917,30 +885,22 @@ if not supervision_task=="classification":
                 if (not unit_normalise) and (dataset=="celeba"):
                     to_plot = (to_plot + 1) / 2
                 axs[i, nb_cols*j+1].imshow(to_plot, cmap='gray')
-            elif dataset == "dynamics":
-                axs[i, nb_cols*j+1].plot(x_recons[:, dim0], x_recons[:, dim1], color=colors[labels[i*4+j]%len(colors)])
             else:
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
             if i==0:
                 axs[i, nb_cols*j+1].set_title("Recons", fontsize=40)
             axs[i, nb_cols*j+1].axis('off')
 
-            if not use_mse_loss:
-                if dataset in image_datasets:
-                    to_plot = xs_uncert[i*4+j].reshape(res)
-                    print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
-                    # if (not unit_normalise) and (dataset=="celeba"):
-                    if (not unit_normalise):
-                        # to_plot = (to_plot + 1) / 2
-                        # to_plot = enforce_positivity(to_plot)
-                        ## Renormalise the uncertainty to be between 0 and 1
-                        to_plot = (to_plot - jnp.min(to_plot)) / (jnp.max(to_plot) - jnp.min(to_plot))
-                        axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
-                elif dataset == "dynamics":
-                    to_plot = xs_uncert[i*4+j]
-                    print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
-                    axs[i, nb_cols*j+2].plot(to_plot[:, dim0], to_plot[:, dim1], color=colors[labels[i*4+j]%len(colors)])
-
+            if dataset in image_datasets and not use_mse_loss:
+                to_plot = xs_uncert[i*4+j].reshape(res)
+                print("Min and max of the uncertainty:", jnp.min(to_plot), jnp.max(to_plot))
+                # if (not unit_normalise) and (dataset=="celeba"):
+                if (not unit_normalise):
+                    # to_plot = (to_plot + 1) / 2
+                    # to_plot = enforce_positivity(to_plot)
+                    ## Renormalise the uncertainty to be between 0 and 1
+                    to_plot = (to_plot - jnp.min(to_plot)) / (jnp.max(to_plot) - jnp.min(to_plot))
+                    axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
                 axs[i, nb_cols*j+2].axis('off')
