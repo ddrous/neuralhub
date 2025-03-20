@@ -95,6 +95,48 @@ class TrendsDataset(TimeSeriesDataset):
 
 
 
+# class DynamicsDataset(TimeSeriesDataset):
+#     """
+#     For the synthetic control dataset from Time Series Classification
+#     """
+
+#     def __init__(self, data_dir, traj_length=1000):
+#         try:
+#             raw_data = torch.load(data_dir)
+#             # raw_t_eval = np.linspace(0, 1., raw_data.shape[1])
+#         except:
+#             raise ValueError(f"Data not loadable at {data_dir}")
+
+#         ## Normalise the dataset between 0 and 1
+#         # raw_data = (raw_data - torch.mean(raw_data)) / torch.std(raw_data)
+#         raw_data = (raw_data - torch.min(raw_data)) / (torch.max(raw_data) - torch.min(raw_data))
+#         ## Put things between -1 and 1
+#         raw_data = (raw_data - 0.5) / 0.5
+
+#         # dataset = raw_data[0:1, :traj_length].cpu().numpy()
+#         # n_envs, n_timesteps, n_dimensions = dataset.shape
+
+#         ## Tile the data into -1, traj_length, n_dimensions
+#         _, raw_timesteps, _ = raw_data.shape
+#         dataset = []
+#         for i in range(0, raw_timesteps, traj_length):
+#             dataset.append(raw_data[0:1, i:i+traj_length, :])
+#         dataset = np.concatenate(dataset, axis=0)
+#         n_envs, n_timesteps, n_dimensions = dataset.shape
+
+#         t_eval = np.linspace(0, 1., n_timesteps)
+#         # t_eval = raw_t_eval[:traj_length]
+#         labels = np.arange(n_envs)
+
+#         self.total_envs = n_envs
+#         self.nb_classes = 64
+#         self.num_steps = n_timesteps
+#         self.data_size = n_dimensions
+
+#         super().__init__(dataset, labels, t_eval, traj_prop=1.0)
+
+
+
 class DynamicsDataset(TimeSeriesDataset):
     """
     For the synthetic control dataset from Time Series Classification
@@ -102,22 +144,23 @@ class DynamicsDataset(TimeSeriesDataset):
 
     def __init__(self, data_dir, traj_length=1000):
         try:
-            raw_data = torch.load(data_dir)
-            # raw_t_eval = np.linspace(0, 1., raw_data.shape[1])
+            raw = np.load(data_dir)
+            raw_data = raw["X"][..., :traj_length, :]
+            raw_t_eval = raw["t"][:traj_length]
         except:
             raise ValueError(f"Data not loadable at {data_dir}")
 
         ## Normalise the dataset between 0 and 1
         # raw_data = (raw_data - torch.mean(raw_data)) / torch.std(raw_data)
-        raw_data = (raw_data - torch.min(raw_data)) / (torch.max(raw_data) - torch.min(raw_data))
+        raw_data = (raw_data - np.min(raw_data)) / (np.max(raw_data) - np.min(raw_data))
         ## Put things between -1 and 1
         raw_data = (raw_data - 0.5) / 0.5
 
-        dataset = raw_data[:, :traj_length].cpu().numpy()
+        # dataset = raw_data[0, :]
+        dataset = raw_data.reshape(-1, traj_length, raw_data.shape[-1])
         n_envs, n_timesteps, n_dimensions = dataset.shape
 
-        t_eval = np.linspace(0, 1., n_timesteps)
-        # t_eval = raw_t_eval[:traj_length]
+        t_eval = raw_t_eval
         labels = np.arange(n_envs)
 
         self.total_envs = n_envs
@@ -126,7 +169,6 @@ class DynamicsDataset(TimeSeriesDataset):
         self.data_size = n_dimensions
 
         super().__init__(dataset, labels, t_eval, traj_prop=1.0)
-
 
 
 
