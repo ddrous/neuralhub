@@ -145,7 +145,7 @@ class DynamicsDataset(TimeSeriesDataset):
     def __init__(self, data_dir, traj_length=1000):
         try:
             raw = np.load(data_dir)
-            raw_data = raw["X"][..., :traj_length, :]
+            raw_data = raw["X"][0, :, :traj_length, :]
             raw_t_eval = raw["t"][:traj_length]
         except:
             raise ValueError(f"Data not loadable at {data_dir}")

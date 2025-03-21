@@ -64,7 +64,7 @@ gradient_lim = 1e-2
 lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
-print_every = 100
+print_every = 1000
 nb_epochs = 5000
 batch_size = 64*100
 unit_normalise = False
