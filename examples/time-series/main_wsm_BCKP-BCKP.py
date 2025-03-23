@@ -55,7 +55,7 @@ sb.set_context("poster")
 
 #%%
 
-SEED = 2024
+SEED = 2026
 main_key = jax.random.PRNGKey(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -73,9 +73,9 @@ lr_decrease_factor = 0.5        ## Reduce on plateau factor
 ## Training hps
 print_every = 1
 nb_epochs = 2*60*4
-batch_size = 64*8
+batch_size = 64*9
 unit_normalise = False
-grounding_length = 600          ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 300          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
@@ -91,8 +91,8 @@ forcing_prob = 0.15
 std_lower_bound = 5e-1
 print(f"==== {supervision_task.capitalize()} Task ====")
 
-train = False
-dataset = "celeba"               ## mnist, cifar, or trends, mnist_fashion
+train = True
+dataset = "mnist"               ## mnist, cifar, or trends, mnist_fashion
 data_folder = "./data/" if train else "../../data/"
 image_datasets = ["mnist", "mnist_fashion", "cifar", "celeba"]
 
@@ -251,7 +251,6 @@ class Ses2Seq(eqx.Module):
     As: jnp.ndarray
     Bs: jnp.ndarray
     thetas: jnp.ndarray
-    # t: jnp.ndarray
 
     root_utils: list
     inference_mode: bool
@@ -289,7 +288,7 @@ class Ses2Seq(eqx.Module):
         As = []
         Bs = []
         for i in range(nb_rnn_layers):
-            root = RootMLP(1, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
+            root = RootMLP(1+data_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
@@ -375,7 +374,8 @@ class Ses2Seq(eqx.Module):
                     root_fun = eqx.combine(params, static)
                     # ## Clip t between 0 and 1
                     # t_curr = jnp.clip(self.t, 0., 1.)
-                    y_next = root_fun(t_curr + delta_t)
+                    txy = jnp.concatenate([t_curr+delta_t, x_t], axis=-1)
+                    y_next = root_fun(txy)
 
                     if supervision_task=="classification":
                         x_next_mean = x_true
@@ -877,8 +877,6 @@ if not supervision_task=="classification":
                     ## Renormalise the uncertainty to be between 0 and 1
                     to_plot = (to_plot - jnp.min(to_plot)) / (jnp.max(to_plot) - jnp.min(to_plot))
                     axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
-                    # to_plot = (to_plot - 0.5) / (0.65 - 0.5)
-                    # axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray', vmin=0.5, vmax=0.65)
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
                 axs[i, nb_cols*j+2].axis('off')

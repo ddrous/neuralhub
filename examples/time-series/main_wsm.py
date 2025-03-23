@@ -54,7 +54,7 @@ torch.manual_seed(SEED)
 
 ## Model hps
 mlp_hidden_size = 24
-mlp_depth = 2
+mlp_depth = 3
 rnn_inner_dims = []
 nb_rnn_layers = len(rnn_inner_dims) + 1
 
@@ -64,11 +64,11 @@ gradient_lim = 1e-2
 lr_decrease_factor = 0.5        ## Reduce on plateau factor
 
 ## Training hps
-print_every = 1000
-nb_epochs = 5000
+print_every = 100
+nb_epochs = 500
 batch_size = 64*100
 unit_normalise = False
-grounding_length = 10          ## The length of the grounding pixel for the autoregressive digit generation
+grounding_length = 15          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
@@ -150,12 +150,13 @@ elif dataset=="celeba":
 elif dataset=="dynamics":
     print(" #### Dynamics Dataset ####")
     data_url = "dynamics/lorentz-63/full.pt"
-    data_url = "dynamics/lotka/train.npz"
-    trainloader = NumpyLoader(DynamicsDataset(data_folder+data_url, traj_length=20), 
+    # data_url = "dynamics/lotka/train.npz"
+    traj_len = 500
+    trainloader = NumpyLoader(DynamicsDataset(data_folder+data_url, traj_length=traj_len), 
                               batch_size=batch_size, 
                               shuffle=True, 
                               num_workers=24)
-    testloader = NumpyLoader(DynamicsDataset(data_folder+data_url, traj_length=20),     ## 5500
+    testloader = NumpyLoader(DynamicsDataset(data_folder+data_url, traj_length=traj_len),     ## 5500
                                 batch_size=batch_size, 
                                 shuffle=True, 
                                 num_workers=24)
@@ -179,6 +180,9 @@ batch = next(iter(testloader))
 (images, times), labels = batch
 print("Images shape:", images.shape)
 print("Labels shape:", labels.shape)
+print("Seq length:", seq_length)
+print("Data size:", data_size)
+# print("Times:", times)
 
 print("Min and Max in the dataset:", jnp.min(images), jnp.max(images))
 print("==Number of batches:")
@@ -330,6 +334,7 @@ class Ses2Seq(eqx.Module):
         for i in range(nb_rnn_layers):
             root_in_size = 3 if include_canonical_coords else 1
             root = RootMLP(root_in_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
+            # root = RootMLP(data_size, rnn_out_layers[i], width, depth, builtin_fns[activation], key=keys[i])
             params, static = eqx.partition(root, eqx.is_array)
             weights, shapes, treedef = flatten_pytree(params)
             root_utils.append((shapes, treedef, static, root.props))
@@ -429,6 +434,7 @@ class Ses2Seq(eqx.Module):
                     #     txy = t_curr+delta_t
                     txy = t_curr+delta_t
                     # txy = jnp.concatenate([t_curr+delta_t, x_t], axis=-1)
+                    # txy = x_t
                     # print("txy shape:", txy.shape)
                     y_next = root_fun(txy)     ## these are x,y coordinates
                     y_next = enforce_dynamictanh(y_next, self.dtanh)
@@ -731,8 +737,8 @@ else:
 
 
 ## Print the current value of the lower bound
-print("Lower bound for the standard deviations:", std_lower_bound)
-print("Params for the dynamic tanh:\n", model.dtanh)
+# print("Lower bound for the standard deviations:", std_lower_bound)
+print("Params for the dynamic tanh:", model.dtanh)
 
 # %%
 
