@@ -2,13 +2,26 @@
 
 # \begin{cases}
 # \dot{x} = y \\
-# \dot{v} = ay - x(b + cx^2)
+# \dot{y} = ay - x(b + cx^2)
 # \end{cases}
 
 #%%
 import numpy as np
 from scipy.integrate import solve_ivp
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import seaborn as sb
+sb.set_theme(context='poster', 
+             style='ticks',
+             font='sans-serif', 
+             font_scale=1, 
+             color_codes=True, 
+             rc={"lines.linewidth": 1})
+mpl.rcParams['savefig.facecolor'] = 'w'
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['mathtext.fontset'] = 'dejavuserif'
+plt.rcParams['savefig.bbox'] = 'tight'
+
 
 # Define the Duffing system
 def duffing(t, state, a, b, c):
@@ -49,8 +62,11 @@ init_conds = np.array([[-0.5, -1], [-0.5, -0.5], [-0.5, 0.5],
                        [-1.5, 1], 
                     #    [-0.5, 1], 
                        [-1, -1], [-1, -0.5], [-1, 0.5], [-1, 1], 
-                       [-2, -1], [-2, -0.5], [-2, 0.5], [-2, 1]])
-
+                       [-2, -1], [-2, -0.5], [-2, 0.5], [-2, 1],
+                       [0.5, -1], [0.5, -0.5], [0.5, 0.5], [0.5, 1],
+                       [1, -1], [1, -0.5], [1, 0.5], [1, 1],
+                       [2, -1], [2, -0.5], [2, 0.5], [2, 1],
+                       ])
 
 train_data = []
 
@@ -73,13 +89,18 @@ for state0 in init_conds:
 
     ## Plot the phase space
     plt.plot(sol.y[0], sol.y[1])
-    plt.xlabel('Displacement (x)')
-    plt.ylabel('Velocity (y)')
+    plt.xlabel(f'Displacement ($x$)')
+    plt.ylabel(f'Velocity ($y$)')
     plt.title('Phase Space')
-    plt.grid(True)
+    # plt.grid(True)
 
-plt.show()
+# plt.show()
+plt.xlim(-4, 4)
+plt.ylim(-2, 2)
+plt.draw();
+plt.savefig("data/duffing_phase_space.png", dpi=300)
 
 ## Save the training data
 train_data = np.stack(train_data)
 np.savez("data/train.npz", X=train_data, t=t_eval)
+
