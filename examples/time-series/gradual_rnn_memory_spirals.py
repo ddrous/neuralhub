@@ -51,19 +51,42 @@ def get_data(dataset_size, seq_len=16, *, key):
     y = y.at[:half_dataset_size].set(0)
     x = jnp.stack([x1, x2], axis=-1)
 
+    permust = jrandom.permutation(key, dataset_size)
+    x = x[permust]
+    y = y[permust]
+
     return x, y
 
 
-## A gradual tanh function : y=0.5\cdot\left(1-\tanh\left(\frac{\left(x-n\right)}{0.1}\right)\right)
-def gradual_tanh(x, n):
-    return 0.5 * (1 - jnp.tanh((x - n) / 0.1))
+## Get te data
+data = get_data(2000, 64, key=jrandom.PRNGKey(0))
+xs, ys = data
+print(xs.shape)
+print(ys.shape)
 
-## x is always jnp.arange(16), n is the step number
-for i in range(0, 161, 16):
-    plt.plot(gradual_tanh(jnp.arange(160), i), label=f"n={i}")
 
-plt.legend()
+## Save the data
+np.savez("spirals_test.npz", xs=xs, ys=ys)
+
+## PLor the xs
+plt.figure(figsize=(10, 6))
+for i in range(10):
+    color = 'red' if ys[i] > 0.5 else 'green'
+    plt.plot(xs[i, :, 0], xs[i, :, 1], color=color)
 plt.show()
+
+
+
+# ## A gradual tanh function : y=0.5\cdot\left(1-\tanh\left(\frac{\left(x-n\right)}{0.1}\right)\right)
+# def gradual_tanh(x, n):
+#     return 0.5 * (1 - jnp.tanh((x - n) / 0.1))
+
+# ## x is always jnp.arange(16), n is the step number
+# for i in range(0, 161, 16):
+#     plt.plot(gradual_tanh(jnp.arange(160), i), label=f"n={i}")
+
+# plt.legend()
+# plt.show()
 
 
 
