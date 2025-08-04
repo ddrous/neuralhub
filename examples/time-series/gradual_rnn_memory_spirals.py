@@ -17,7 +17,7 @@ import numpy as np
 import optax  # https://github.com/deepmind/optax
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_debug_nans", True)
+# jax.config.update("jax_debug_nans", True)
 
 #%%[markdown]
 # We begin by importing the usual libraries, setting up a very simple dataloader, and generating a toy dataset of spirals.

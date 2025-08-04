@@ -76,6 +76,7 @@ nb_epochs = 2*60*4
 batch_size = 64*2
 unit_normalise = False
 grounding_length = 2150          ## The length of the grounding pixel for the autoregressive digit generation
+# grounding_length = 1600          ## The length of the grounding pixel for the autoregressive digit generation
 autoregressive_inference = True    ## Type of inference to use: If True, the model is autoregressive, else it remebers and regurgitates the same image 
 full_matrix_A = True            ## Whether to use a full matrix A or a diagonal one
 use_theta_prev = False          ## Whether to use the previous pevious theta in the computation of the next one
@@ -88,6 +89,7 @@ nb_recons_loss_steps = -1        ## Number of steps to sample for the reconstruc
 train_strategy = "flip_coin"     ## "flip_coin", "teacher_forcing", "always_true"
 use_mse_loss = False
 resolution = (64, 64)
+# resolution = (48, 48)
 forcing_prob = 0.15
 std_lower_bound = 1e-4              ## Let's optimise the lower bound
 print(f"==== {supervision_task.capitalize()} Task ====")
@@ -876,7 +878,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j].plot(x, color=colors[labels[i*4+j]])
             if i==0:
                 axs[i, nb_cols*j].set_title("GT", fontsize=40)
-            axs[i, nb_cols*j].axis('off')
+            # axs[i, nb_cols*j].axis('off')
 
             if dataset in image_datasets:
                 to_plot = x_recons.reshape(res)
@@ -887,7 +889,7 @@ if not supervision_task=="classification":
                 axs[i, nb_cols*j+1].plot(x_recons, color=colors[labels[i*4+j]])
             if i==0:
                 axs[i, nb_cols*j+1].set_title("Recons", fontsize=40)
-            axs[i, nb_cols*j+1].axis('off')
+            # axs[i, nb_cols*j+1].axis('off')
 
             if dataset in image_datasets and not use_mse_loss:
                 to_plot = xs_uncert[i*4+j].reshape(res)
@@ -901,11 +903,13 @@ if not supervision_task=="classification":
                     axs[i, nb_cols*j+2].imshow(to_plot, cmap='gray')
                 if i==0:
                     axs[i, nb_cols*j+2].set_title("Uncertainty", fontsize=36)
-                axs[i, nb_cols*j+2].axis('off')
+                # axs[i, nb_cols*j+2].axis('off')
 
     plt.suptitle(f"Reconstruction using {grounding_length} initial pixels", fontsize=65)
     plt.draw();
-    plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+    # plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+    plt.savefig(run_folder+"reconstruction_.png", dpi=100, bbox_inches='tight')
+    plt.savefig(run_folder+"reconstruction_.pdf", dpi=200, bbox_inches='tight')
 
 
 #%%

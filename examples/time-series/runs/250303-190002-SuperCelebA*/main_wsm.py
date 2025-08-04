@@ -885,7 +885,8 @@ if not supervision_task=="classification":
 
     plt.suptitle(f"Reconstruction using {grounding_length} initial pixels", fontsize=65)
     plt.draw();
-    plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+    # plt.savefig(run_folder+"reconstruction.png", dpi=100, bbox_inches='tight')
+    plt.savefig(run_folder+"reconstruction.png", dpi=300, bbox_inches='tight')
 
 
 #%%
