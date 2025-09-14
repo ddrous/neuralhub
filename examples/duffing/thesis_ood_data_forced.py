@@ -20,7 +20,7 @@ sb.set_theme(context='poster',
              font='sans-serif', 
              font_scale=1.75, 
              color_codes=True, 
-             rc={"lines.linewidth": 3})
+             rc={"lines.linewidth": 10})
 mpl.rcParams['savefig.facecolor'] = 'w'
 plt.rcParams['font.family'] = 'serif'
 # plt.rcParams['mathtext.fontset'] = 'dejavuserif'
@@ -44,7 +44,7 @@ a, b, c = -1/2., -1, 1/10.
 skip = 1  # Skip every 10th point for plotting
 arrow_skip = 100  # Skip every 50th point for arrows
 
-t_span = (0, 15)
+t_span = (0, 35)
 t_eval = np.arange(t_span[0], t_span[1], 0.005)[::skip]
 
 
@@ -76,7 +76,7 @@ ood_2 = np.array([
                     #    [-2, -1], [-2, -0.5], [-2, 0.5], [-2, 1],
                     #    [0.5, -1], [0.5, -0.5], [0.5, 0.5], [0.5, 1],
                     #    [1, -1], [1, -0.5], [1, 0.5], [1, 1],
-                       [2, -1], 
+                    #    [2, -1], 
                     #    [2, -0.5], [2, 0.5], [2, 1],
                        ])
 
@@ -106,14 +106,14 @@ for i, params in enumerate(ood_1):
     train_data.append(sol.y.T)
 
     ## Plot the phase space
-    ax.plot(sol.y[0][::skip], sol.y[1][::skip], "-", label=f"OoD Type 1" if i==0 else None, alpha=0.99, color="blue", lw=5)
+    ax.plot(sol.y[0][::skip], sol.y[1][::skip], "-", label=f"OoD Type 1" if i==0 else None, alpha=0.7, color="teal")
 
     ## Add a few arrows to indicate the direction of the flow
     for i in range(0, len(sol.y[0][::skip])-1, arrow_skip):
         ax.arrow(sol.y[0][::skip][i], sol.y[1][::skip][i], 
                  sol.y[0][::skip][i+1] - sol.y[0][::skip][i], 
                  sol.y[1][::skip][i+1] - sol.y[1][::skip][i],
-                 head_width=0.09, head_length=0.1, fc='blue', ec='blue', alpha=0.5)
+                 head_width=0.04, head_length=0.1, fc='blue', ec='teal', alpha=0.5)
 
 
 ## Simulate and plot OOD2 data (changes the initial conditions, easy peasy)
@@ -122,58 +122,66 @@ for i, state0 in enumerate(ood_2):
     train_data.append(sol.y.T)
 
     ## Plot the phase space
-    ax.plot(sol.y[0][::skip], sol.y[1][::skip], "-", label=f"OoD Type 2" if i==0 else None, alpha=0.99, color="green", lw=5)
+    ax.plot(sol.y[0][::skip], sol.y[1][::skip], "-", label=f"OoD Type 2" if i==0 else None, alpha=0.7, color="blue")
 
     ## Add a few arrows to indicate the direction of the flow
     for i in range(0, len(sol.y[0][::skip])-1, arrow_skip):
         ax.arrow(sol.y[0][::skip][i], sol.y[1][::skip][i], 
                  sol.y[0][::skip][i+1] - sol.y[0][::skip][i], 
                  sol.y[1][::skip][i+1] - sol.y[1][::skip][i],
-                 head_width=0.09, head_length=0.1, fc='green', ec='green', alpha=0.5)
+                 head_width=0.04, head_length=0.1, fc='green', ec='blue', alpha=0.5)
 
 
-# OOD3 initial conditions - using some from your existing sets
-ood_3 = np.array([
-    # [-1, 0.25],      # Similar to training data
-    # [0.5, 1],     # Similar to training data  
-    # [-2, -0.5],    # Similar to training data
-    [-0.5, 1], 
-    [-1, 1]
-])
-
-# Alternative OOD3 option: Duffing-Van der Pol hybrid
-def duffing_vdp_hybrid(t, state, a, b, c, mu):
-    """
-    Hybrid system combining Duffing and other characteristics
-    dx/dt = y
-    dy/dt = a*y - x*(b + c*x²) + μ(1-x²)y
-    """
+# OOD3: Forced Duffing Oscillator to show a different attractor
+def forced_duffing(t, state, a, b, c, gamma, omega):
+    """Forced Duffing oscillator."""
     x, y = state
     dxdt = y
-    # dydt = a*y - x*(b + c*x**2) + mu * (1 - x**2) * y
-    dydt = a*y - x*(b + c*x**2) + mu*y**2
+    dydt = a*y - x*(b + c*x**2) + gamma * np.cos(omega * t)
     return [dxdt, dydt]
 
-# Hybrid parameters
-mu_hybrid = -0.2  # Small 
+# Forcing parameters for OOD3
+gamma = 1.0
+omega = 1.0
 
-# Uncomment below to use hybrid instead of pure Van der Pol:
-# """
-## Simulate and plot OOD3 data (Duffing-Something else)
-for i, state0 in enumerate(ood_3):
-    sol = solve_ivp(duffing_vdp_hybrid, t_span, state0, args=(a, b, c, mu_hybrid), t_eval=t_eval)
-    train_data.append(sol.y.T)
+# # Use a longer time span to let the system settle on the attractor
+# t_span_ood3 = (0, 300)
+# t_eval_ood3 = np.arange(t_span_ood3[0], t_span_ood3[1], 0.02)
+# arrow_skip_ood3 = 2000
+
+# Use a the same span as the other cases
+t_span_ood3 = t_span
+t_eval_ood3 = t_eval
+arrow_skip_ood3 = arrow_skip
+
+# OOD3 initial conditions
+# ood_3_ics = np.array([
+#     [1.0, 1.0],
+# ])
+ood_3_ics = np.array([
+                       [-0.5, 1], 
+                    #    [2, -1], 
+                       ])
+
+## Simulate and plot OOD3 data (Forced Duffing)
+for i, state0 in enumerate(ood_3_ics):
+    sol = solve_ivp(forced_duffing, t_span_ood3, state0, args=(a, b, c, gamma, omega), t_eval=t_eval_ood3)
+
+    # Let the transient die out before plotting
+    # transient_cutoff = len(t_eval_ood3) // 3
+    transient_cutoff = 0
+    x_attractor = sol.y[0][transient_cutoff:]
+    y_attractor = sol.y[1][transient_cutoff:]
 
     ## Plot the phase space
-    ax.plot(sol.y[0][::skip], sol.y[1][::skip], "-", label=f"OoD Type 3" if i==0 else None, alpha=0.99, color="crimson", lw=5)
+    ax.plot(x_attractor, y_attractor, "-", label=f"OoD Type 3" if i==0 else None, alpha=0.7, color="crimson")
 
     ## Add a few arrows to indicate the direction of the flow
-    for j in range(0, len(sol.y[0][::skip])-1, arrow_skip):
-        ax.arrow(sol.y[0][::skip][j], sol.y[1][::skip][j], 
-                 sol.y[0][::skip][j+1] - sol.y[0][::skip][j], 
-                 sol.y[1][::skip][j+1] - sol.y[1][::skip][j],
-                 head_width=0.09, head_length=0.1, fc='crimson', ec='crimson', alpha=0.5)
-# """
+    for j in range(0, len(x_attractor)-1, arrow_skip_ood3):
+        ax.arrow(x_attractor[j], y_attractor[j],
+                 x_attractor[j+1] - x_attractor[j],
+                 y_attractor[j+1] - y_attractor[j],
+                 head_width=0.04, head_length=0.1, fc='crimson', ec='crimson', alpha=0.5)
 
 
 ## Remove the top and right spines
@@ -189,8 +197,8 @@ ax.plot(1, -2.2, ">k", transform=ax.get_yaxis_transform(), clip_on=False, marker
 ax.plot(-4.35, 1, "^k", transform=ax.get_xaxis_transform(), clip_on=False, markersize=15)
 
 
-ax.set_xlabel(r'Displacement ($x$)', fontsize=26)
-ax.set_ylabel(r'Velocity ($\dot x$)', fontsize=26)
+ax.set_xlabel(r'Displacement ($x$)', fontsize=30)
+ax.set_ylabel(r'Velocity ($\dot x$)', fontsize=30)
 # ax.set_title('Phase Space')
 
 # plt.grid(True)
@@ -208,5 +216,11 @@ plt.xlim(-4.35, 4.35)
 plt.ylim(-2.2, 2.2)
 
 plt.draw();
-plt.savefig(f"data/duffing_ood_types_nicer.png", dpi=100, bbox_inches='tight')
-# plt.savefig(f"data/duffing_ood_types_nicer.pdf", dpi=300, bbox_inches='tight')
+# Create the 'data' directory if it doesn't exist to avoid an error
+import os
+os.makedirs('data', exist_ok=True)
+# plt.savefig(f"data/duffing_ood_types_nicer.png", dpi=100, bbox_inches='tight')
+plt.savefig(f"data/duffing_ood_types_nicer.pdf", dpi=300, bbox_inches='tight')
+
+plt.show() # Added to display the plot when running the script
+
