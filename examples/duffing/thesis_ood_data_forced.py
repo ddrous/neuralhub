@@ -197,8 +197,8 @@ ax.plot(1, -2.2, ">k", transform=ax.get_yaxis_transform(), clip_on=False, marker
 ax.plot(-4.35, 1, "^k", transform=ax.get_xaxis_transform(), clip_on=False, markersize=15)
 
 
-ax.set_xlabel(r'Displacement ($x$)', fontsize=30)
-ax.set_ylabel(r'Velocity ($\dot x$)', fontsize=30)
+ax.set_xlabel(r'Displacement ($x$)', fontsize=36)
+ax.set_ylabel(r'Velocity ($\dot x$)', fontsize=36)
 # ax.set_title('Phase Space')
 
 # plt.grid(True)
